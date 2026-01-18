@@ -1,4 +1,4 @@
-import { Options } from "../../../packages/promptions-llm/src";
+import { Options } from "./lib/promptions-llm";
 
 // State type for reactive state management
 export type State<T> = { get: T; set: (fn: (prev: T) => void) => void };

@@ -2,7 +2,7 @@ import React from "react";
 import { makeStyles, tokens } from "@fluentui/react-components";
 import { UserMessage, AssistantMessage, ErrorMessageComponent } from "./";
 import { HistoryMessage } from "../types";
-import { BasicOptions, VisualOptionSet, Options } from "../lib/promptions-ui";
+import type { BasicOptions, VisualOptionSet, Options } from "../lib/promptions-ui";
 
 const useStyles = makeStyles({
     chatRow: {

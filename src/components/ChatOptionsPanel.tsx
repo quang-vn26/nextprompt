@@ -1,7 +1,7 @@
 import React from "react";
 import { makeStyles, tokens, Text, Card, CardHeader, Button, RadioGroup, Radio } from "@fluentui/react-components";
 import { Settings24Regular } from "@fluentui/react-icons";
-import { VisualOptionSet, BasicOptions } from "../lib/promptions-ui";
+import type { VisualOptionSet, BasicOptions } from "../lib/promptions-ui";
 
 const useStyles = makeStyles({
     sidebar: {
