@@ -1,5 +1,4 @@
 import React from "react";
-import OpenAI from "openai";
 import { FluentProvider, webLightTheme, makeStyles, tokens } from "@fluentui/react-components";
 import { ChatService } from "./services/ChatService";
 import { ChatMessage, PromptionsService } from "./services/PromptionsService";
@@ -289,7 +288,7 @@ const ChatPanel: React.FC<{
                         },
                     );
                 } catch (error) {
-                    if (error instanceof OpenAI.APIUserAbortError) {
+                    if ((error as Error).name === 'AbortError') {
                         console.log("Chat request aborted by user");
                         return;
                     }
@@ -413,7 +412,7 @@ const ChatPanel: React.FC<{
                         { signal: abort.signal },
                     );
                 } catch (error) {
-                    if (error instanceof OpenAI.APIUserAbortError) {
+                    if ((error as Error).name === 'AbortError') {
                         console.log("Chat request aborted by user");
                         return;
                     }

@@ -1,4 +1,3 @@
-export { SendButton } from "./SendButton";
 export { UserMessage } from "./UserMessage";
 export { AssistantMessage } from "./AssistantMessage";
 export { ErrorMessageComponent } from "./ErrorMessageComponent";
