@@ -1,9 +1,17 @@
-from fastapi import FastAPI, Depends
+from contextlib import asynccontextmanager
+import os
+import uuid
+from typing import List
+
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from database import get_db, test_connection
+from sqlalchemy import text
 from dotenv import load_dotenv
-import os
+
+from database import get_db, test_connection
+from models import User, Conversation, Message
+from schemas import HealthCheck, TestInsertResponse, RootResponse, MessageResponse
 
 # Load environment variables
 load_dotenv()
@@ -11,15 +19,32 @@ load_dotenv()
 # Gemini model configuration
 GEMINI_MODEL = "gemini-2.5-flash"
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Lifecycle events"""
+    print("🚀 Starting NextPrompt API...")
+
+    # Test database connection
+    if test_connection():
+        print("✅ Database connection successful")
+    else:
+        print("❌ Database connection failed")
+
+    yield
+
+    print("🛑 Shutting down NextPrompt API...")
+
 # Create FastAPI app
 app = FastAPI(
     title="NextPrompt API",
     description="AI Chatbot with Gemini - Multimodal chat with dynamic options and next-prompt suggestions",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS configuration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+allowed_origins_env = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000")
+allowed_origins = [origin.strip() for origin in allowed_origins_env.split(",") if origin.strip()]
 
 app.add_middleware(
     CORSMiddleware,
@@ -30,19 +55,7 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup"""
-    print("🚀 Starting NextPrompt API...")
-    
-    # Test database connection
-    if test_connection():
-        print("✅ Database connection successful")
-    else:
-        print("❌ Database connection failed")
-
-
-@app.get("/")
+@app.get("/", response_model=RootResponse)
 async def root():
     """Root endpoint"""
     return {
@@ -52,13 +65,12 @@ async def root():
     }
 
 
-@app.get("/health")
+@app.get("/health", response_model=HealthCheck)
 async def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint
     Verifies API and database connectivity
     """
-    from sqlalchemy import text
     # Test database
     db_status = "connected"
     try:
@@ -73,28 +85,23 @@ async def health_check(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/test-insert")
+@app.get("/test-insert", response_model=TestInsertResponse)
 async def test_insert(db: Session = Depends(get_db)):
     """
-    Test endpoint to insert and read a sample message
-    Day 1 acceptance criteria verification
+    Test endpoint to insert and read a sample message.
+    WARNING: This creates real data. Use for verification only.
     """
-    from models import User, Conversation, Message
-    import uuid
-    
     try:
         # Create test user
         test_device_id = f"test-device-{uuid.uuid4()}"
         user = User(device_id=test_device_id)
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        db.flush()
         
         # Create test conversation
         conversation = Conversation(user_id=user.id, title="Test Conversation")
         db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
+        db.flush()
         
         # Create test message
         message = Message(
@@ -103,11 +110,12 @@ async def test_insert(db: Session = Depends(get_db)):
             content_text="This is a test message for Day 1 verification"
         )
         db.add(message)
+
+        # Commit all changes transactionally
         db.commit()
+        db.refresh(user)
+        db.refresh(conversation)
         db.refresh(message)
-        
-        # Read back the message
-        retrieved_message = db.query(Message).filter(Message.id == message.id).first()
         
         return {
             "status": "success",
@@ -116,15 +124,16 @@ async def test_insert(db: Session = Depends(get_db)):
                 "user_id": str(user.id),
                 "conversation_id": str(conversation.id),
                 "message_id": str(message.id),
-                "message_content": retrieved_message.content_text,
-                "created_at": retrieved_message.created_at.isoformat()
+                "message_content": message.content_text,
+                "created_at": message.created_at.isoformat()
             }
         }
     except Exception as e:
         db.rollback()
         return {
             "status": "error",
-            "message": str(e)
+            "message": str(e),
+            "data": None
         }
 
 
