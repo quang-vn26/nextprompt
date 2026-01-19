@@ -1,5 +1,5 @@
 import React from "react";
-import { makeStyles, tokens } from "@fluentui/react-components";
+import { makeStyles } from "@fluentui/react-components";
 import { UserMessage, AssistantMessage, ErrorMessageComponent } from "./";
 import { HistoryMessage } from "../types";
 import type { BasicOptions, VisualOptionSet, Options } from "../lib/promptions-ui";
@@ -11,23 +11,41 @@ const useStyles = makeStyles({
         justifyContent: "center",
         alignItems: "flex-start",
         gap: "0",
-        marginBottom: tokens.spacingVerticalXL,
+        marginBottom: "24px",
+        animation: "fadeInUp 0.4s ease-out forwards",
+        "@media (max-width: 768px)": {
+            flexDirection: "column",
+        },
     },
     messagesColumn: {
-        width: "50%",
-        minWidth: "50%",
+        width: "100%",
+        maxWidth: "800px",
         display: "flex",
         flexDirection: "column",
+        "@media (min-width: 768px)": {
+            width: "50%",
+            minWidth: "50%",
+        },
     },
     optionsColumn: {
-        width: "25%",
-        minWidth: "25%",
-        paddingLeft: tokens.spacingHorizontalM,
-        position: "sticky",
-        top: tokens.spacingVerticalL,
+        width: "100%",
+        paddingLeft: "0",
+        paddingTop: "16px",
+        "@media (min-width: 768px)": {
+            width: "25%",
+            minWidth: "25%",
+            paddingLeft: "16px",
+            paddingTop: "0",
+            position: "sticky",
+            top: "24px",
+        },
     },
     spacerColumn: {
-        width: "25%",
+        display: "none",
+        "@media (min-width: 768px)": {
+            display: "block",
+            width: "25%",
+        },
     },
     welcomeContainer: {
         display: "flex",
@@ -36,34 +54,41 @@ const useStyles = makeStyles({
         justifyContent: "center",
         minHeight: "60vh",
         textAlign: "center",
-        padding: tokens.spacingHorizontalXL,
+        padding: "24px",
     },
     welcomeIcon: {
-        fontSize: "64px",
-        marginBottom: tokens.spacingVerticalL,
+        fontSize: "80px",
+        marginBottom: "24px",
+        animation: "pulse 2s ease-in-out infinite",
+        filter: "drop-shadow(0 0 20px rgba(99, 102, 241, 0.4))",
     },
     welcomeTitle: {
-        fontSize: tokens.fontSizeBase600,
-        fontWeight: tokens.fontWeightSemibold,
-        color: tokens.colorNeutralForeground1,
-        marginBottom: tokens.spacingVerticalM,
+        fontSize: "2rem",
+        fontWeight: "700",
+        marginBottom: "16px",
+        background: "linear-gradient(135deg, #6366f1 0%, #8b5cf6 50%, #a855f7 100%)",
+        backgroundSize: "200% 200%",
+        WebkitBackgroundClip: "text",
+        WebkitTextFillColor: "transparent",
+        backgroundClip: "text",
+        animation: "gradientText 3s ease infinite",
     },
     welcomeSubtitle: {
-        fontSize: tokens.fontSizeBase300,
-        color: tokens.colorNeutralForeground2,
-        maxWidth: "400px",
-        lineHeight: "1.5",
+        fontSize: "1.1rem",
+        color: "#a0a0b0",
+        maxWidth: "450px",
+        lineHeight: "1.6",
     },
     refreshButton: {
         minWidth: "24px",
         height: "24px",
         padding: "2px",
-        marginBottom: tokens.spacingVerticalS,
+        marginBottom: "8px",
     },
     optionsHeader: {
         display: "flex",
         justifyContent: "flex-end",
-        marginBottom: tokens.spacingVerticalS,
+        marginBottom: "8px",
     },
 });
 
@@ -84,9 +109,11 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ history, historySet, c
                 <div className={styles.spacerColumn}></div>
                 <div className={styles.messagesColumn}>
                     <div className={styles.welcomeContainer}>
-                        <div className={styles.welcomeIcon}>🤖</div>
-                        <h2 className={styles.welcomeTitle}>Welcome to Promptions AI Chat</h2>
-                        <p className={styles.welcomeSubtitle}>Start a conversation by typing a message below.</p>
+                        <div className={styles.welcomeIcon}>✨</div>
+                        <h2 className={styles.welcomeTitle}>Welcome to Promptions AI</h2>
+                        <p className={styles.welcomeSubtitle}>
+                            Start a conversation below. I'll help you with creative prompts, ideas, and interactive options.
+                        </p>
                     </div>
                 </div>
                 <div className={styles.optionsColumn}></div>
@@ -105,7 +132,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ history, historySet, c
 
         if (message.role === "user") {
             messageElements.push(
-                <div key={message.id} className={styles.chatRow}>
+                <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
                     <div className={styles.spacerColumn}></div>
                     <div className={styles.messagesColumn}>
                         <UserMessage message={message} />
@@ -115,7 +142,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ history, historySet, c
             );
         } else if (message.role === "assistant") {
             messageElements.push(
-                <div key={message.id} className={styles.chatRow}>
+                <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
                     <div className={styles.spacerColumn}></div>
                     <div className={styles.messagesColumn}>
                         <AssistantMessage message={message} />
@@ -123,19 +150,6 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ history, historySet, c
                     <div className={styles.optionsColumn}>
                         {message.options && !message.options.isEmpty() && (
                             <>
-                                {/* <div className={styles.optionsHeader}>
-                                    {onRefreshOptions && (
-                                        <Button
-                                            appearance="subtle"
-                                            size="small"
-                                            disabled={!message.optionsDone}
-                                            icon={<ArrowClockwise24Regular />}
-                                            onClick={() => onRefreshOptions(message.id)}
-                                            className={styles.refreshButton}
-                                            title={message.optionsDone ? "Refresh Options" : "Generating options..."}
-                                        />
-                                    )}
-                                </div> */}
                                 <OptionRenderer
                                     options={message.options as any}
                                     set={(updatedOptions: Options) => {
@@ -155,7 +169,7 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ history, historySet, c
             );
         } else if (message.role === "error") {
             messageElements.push(
-                <div key={message.id} className={styles.chatRow}>
+                <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
                     <div className={styles.spacerColumn}></div>
                     <div className={styles.messagesColumn}>
                         <ErrorMessageComponent message={message} />

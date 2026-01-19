@@ -1,5 +1,5 @@
 import React from "react";
-import { FluentProvider, webLightTheme, makeStyles, tokens } from "@fluentui/react-components";
+import { FluentProvider, webDarkTheme, makeStyles } from "@fluentui/react-components";
 import { ChatService } from "./services/ChatService";
 import { ChatMessage, PromptionsService } from "./services/PromptionsService";
 import { current, produce } from "immer";
@@ -25,8 +25,9 @@ const useStyles = makeStyles({
         height: "100vh",
         display: "flex",
         flexDirection: "row",
-        backgroundColor: tokens.colorNeutralBackground1,
-        fontFamily: tokens.fontFamilyBase,
+        background: "transparent",
+        fontFamily: "'Inter', sans-serif",
+        position: "relative",
     },
     chatContainer: {
         flex: 1,
@@ -36,22 +37,9 @@ const useStyles = makeStyles({
     },
     chatScrollArea: {
         flex: 1,
-        overflowY: "scroll",
+        overflowY: "auto",
         position: "relative",
         scrollBehavior: "smooth",
-        "&::-webkit-scrollbar": {
-            width: "8px",
-        },
-        "&::-webkit-scrollbar-track": {
-            backgroundColor: tokens.colorNeutralBackground3,
-        },
-        "&::-webkit-scrollbar-thumb": {
-            backgroundColor: tokens.colorNeutralStroke1,
-            borderRadius: "4px",
-        },
-        "&::-webkit-scrollbar-thumb:hover": {
-            backgroundColor: tokens.colorNeutralStroke2,
-        },
     },
     chatPanel: {
         width: "100%",
@@ -62,21 +50,34 @@ const useStyles = makeStyles({
     },
     messagesContainer: {
         flex: 1,
-        padding: `${tokens.spacingVerticalL} ${tokens.spacingHorizontalM}`,
+        padding: "24px 16px",
+        "@media (min-width: 768px)": {
+            padding: "32px 24px",
+        },
     },
     inputContainer: {
-        padding: `${tokens.spacingVerticalM} ${tokens.spacingHorizontalM}`,
-        backgroundColor: tokens.colorNeutralBackground1,
-        borderTop: `1px solid ${tokens.colorNeutralStroke2}`,
+        padding: "16px",
+        background: "rgba(10, 10, 15, 0.9)",
+        backdropFilter: "blur(20px)",
+        borderTop: "1px solid rgba(255, 255, 255, 0.08)",
         position: "sticky",
         bottom: 0,
         zIndex: 100,
         display: "flex",
         justifyContent: "center",
+        "@media (min-width: 768px)": {
+            padding: "20px 24px",
+        },
     },
     inputWrapper: {
-        width: "50%",
+        width: "100%",
         maxWidth: "800px",
+        "@media (min-width: 768px)": {
+            width: "80%",
+        },
+        "@media (min-width: 1200px)": {
+            width: "60%",
+        },
     },
 });
 
@@ -529,7 +530,7 @@ function App() {
     });
 
     return (
-        <FluentProvider theme={webLightTheme}>
+        <FluentProvider theme={webDarkTheme}>
             <div className={styles.appContainer}>
                 {/* Expanding Sidebar */}
                 <ChatOptionsPanel
