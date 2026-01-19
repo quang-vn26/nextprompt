@@ -55,7 +55,7 @@ export class ChatService {
         // Using gemini-2.0-flash for faster responses
         this.model = geminiApiKey
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.0-flash",
+                model: "gemini-2.5-flash",
                 generationConfig: {
                     temperature: 0.7,
                     maxOutputTokens: 2048, // Limit output for faster response
@@ -91,7 +91,7 @@ export class ChatService {
                 () => this.streamWithGemini(messages, onContent, options),
                 "Gemini"
             );
-            console.log("✅ Gemini response completed");
+            console.log("✅ Gemini (gemini-2.5-flash) response completed");
         } catch (geminiError) {
             console.warn("⚠️ Gemini API failed:", geminiError);
             console.log("🔶 Falling back to OpenAI...");
@@ -100,7 +100,7 @@ export class ChatService {
                     () => this.streamWithOpenAI(messages, onContent, options),
                     "OpenAI"
                 );
-                console.log("✅ OpenAI response completed");
+                console.log("✅ OpenAI (gpt-4.1-mini) response completed");
             } catch (openaiError) {
                 console.error("❌ OpenAI also failed:", openaiError);
                 throw openaiError;
@@ -154,7 +154,7 @@ export class ChatService {
         const systemMsg = messages.find(m => m.role === "system");
         const activeModel = systemMsg
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.0-flash",
+                model: "gemini-2.5-flash",
                 systemInstruction: systemMsg.content,
                 generationConfig: {
                     temperature: 0.7,
