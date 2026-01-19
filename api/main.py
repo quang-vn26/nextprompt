@@ -1,103 +1,120 @@
-from fastapi import FastAPI, Depends
+import logging
+import uuid
+from contextlib import asynccontextmanager
+from typing import List
+
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
-from database import get_db, test_connection
-from dotenv import load_dotenv
-import os
+from sqlalchemy import text
 
-# Load environment variables
-load_dotenv()
+from .database import get_db, engine
+from .config import settings
+from . import models, schemas
 
-# Gemini model configuration
-GEMINI_MODEL = "gemini-2.5-flash"
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
+# Lifespan context manager
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events.
+    """
+    logger.info("🚀 Starting NextPrompt API...")
+
+    # Test database connection
+    try:
+        with engine.connect() as conn:
+            conn.execute(text("SELECT 1"))
+        logger.info("✅ Database connection successful")
+    except Exception as e:
+        logger.error(f"❌ Database connection failed: {e}")
+        # We might want to raise an error here if DB is critical,
+        # but often we let the app start and fail on requests.
+
+    yield
+
+    logger.info("🛑 Shutting down NextPrompt API...")
 
 # Create FastAPI app
 app = FastAPI(
-    title="NextPrompt API",
-    description="AI Chatbot with Gemini - Multimodal chat with dynamic options and next-prompt suggestions",
-    version="1.0.0"
+    title=settings.API_TITLE,
+    description=settings.API_DESCRIPTION,
+    version=settings.API_VERSION,
+    lifespan=lifespan
 )
 
 # CORS configuration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup"""
-    print("🚀 Starting NextPrompt API...")
-    
-    # Test database connection
-    if test_connection():
-        print("✅ Database connection successful")
-    else:
-        print("❌ Database connection failed")
-
-
-@app.get("/")
+@app.get("/", response_model=dict)
 async def root():
     """Root endpoint"""
     return {
-        "message": "NextPrompt API",
-        "version": "1.0.0",
+        "message": settings.API_TITLE,
+        "version": settings.API_VERSION,
         "docs": "/docs"
     }
 
 
-@app.get("/health")
+@app.get("/health", response_model=schemas.HealthResponse)
 async def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint
     Verifies API and database connectivity
     """
-    from sqlalchemy import text
-    # Test database
     db_status = "connected"
     try:
         db.execute(text("SELECT 1"))
     except Exception as e:
+        logger.error(f"Health check DB error: {e}")
         db_status = f"error: {str(e)}"
     
     return {
         "status": "ok",
         "database": db_status,
-        "api_version": "1.0.0"
+        "api_version": settings.API_VERSION,
+        "message": "System operational"
     }
 
 
-@app.get("/test-insert")
+@app.get("/test-insert", response_model=schemas.TestInsertResponse)
 async def test_insert(db: Session = Depends(get_db)):
     """
     Test endpoint to insert and read a sample message
     Day 1 acceptance criteria verification
     """
-    from models import User, Conversation, Message
-    import uuid
+    # Note: Generally, test logic should be in test files, not production code.
+    # However, keeping this for verification as per requirements, but refactored.
     
     try:
         # Create test user
         test_device_id = f"test-device-{uuid.uuid4()}"
-        user = User(device_id=test_device_id)
+        user = models.User(device_id=test_device_id)
         db.add(user)
         db.commit()
         db.refresh(user)
         
         # Create test conversation
-        conversation = Conversation(user_id=user.id, title="Test Conversation")
+        conversation = models.Conversation(user_id=user.id, title="Test Conversation")
         db.add(conversation)
         db.commit()
         db.refresh(conversation)
         
         # Create test message
-        message = Message(
+        message = models.Message(
             conversation_id=conversation.id,
             role="user",
             content_text="This is a test message for Day 1 verification"
@@ -107,8 +124,12 @@ async def test_insert(db: Session = Depends(get_db)):
         db.refresh(message)
         
         # Read back the message
-        retrieved_message = db.query(Message).filter(Message.id == message.id).first()
+        # In a real app we'd use schemas and repositories
+        retrieved_message = db.query(models.Message).filter(models.Message.id == message.id).first()
         
+        if not retrieved_message:
+             raise HTTPException(status_code=500, detail="Failed to retrieve inserted message")
+
         return {
             "status": "success",
             "message": "Sample message inserted and retrieved successfully",
@@ -122,6 +143,7 @@ async def test_insert(db: Session = Depends(get_db)):
         }
     except Exception as e:
         db.rollback()
+        logger.error(f"Test insert failed: {e}")
         return {
             "status": "error",
             "message": str(e)

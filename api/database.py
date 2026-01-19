@@ -1,24 +1,13 @@
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-import os
-
-# Load environment variables
-load_dotenv()
-
-# Database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
+from sqlalchemy.orm import sessionmaker, declarative_base
+from .config import settings
 
 # Create SQLAlchemy engine
 engine = create_engine(
-    DATABASE_URL,
-    pool_pre_ping=True,  # Verify connections before using
-    pool_size=5,
-    max_overflow=10
+    settings.DATABASE_URL,
+    pool_pre_ping=True,
+    pool_size=settings.DB_POOL_SIZE,
+    max_overflow=settings.DB_MAX_OVERFLOW
 )
 
 # Session factory
@@ -39,16 +28,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-# Test database connection
-def test_connection():
-    """Test database connection"""
-    from sqlalchemy import text
-    try:
-        with engine.connect() as conn:
-            conn.execute(text("SELECT 1"))
-        return True
-    except Exception as e:
-        print(f"Database connection failed: {e}")
-        return False
