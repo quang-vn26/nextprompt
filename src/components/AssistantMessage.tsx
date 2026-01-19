@@ -1,7 +1,7 @@
 import React from "react";
 import { ResponseMessage } from "../types";
 import { MarkdownRenderer } from "./MarkdownRenderer";
-import { Card, makeStyles } from "@fluentui/react-components";
+import { Card, makeStyles, shorthands } from "@fluentui/react-components";
 
 const useStyles = makeStyles({
     messageContainer: {
@@ -12,17 +12,14 @@ const useStyles = makeStyles({
     messageCard: {
         maxWidth: "100%",
         minWidth: "100%",
-        background: "rgba(26, 26, 38, 0.5)",
-        backdropFilter: "blur(12px)",
-        borderRadius: "16px",
-        padding: "16px 20px",
-        border: "1px solid rgba(255, 255, 255, 0.06)",
+        backgroundColor: "rgba(26, 26, 38, 0.5)",
+        ...shorthands.borderRadius("16px"),
+        ...shorthands.padding("16px", "20px"),
+        ...shorthands.border("1px", "solid", "rgba(255, 255, 255, 0.06)"),
         boxShadow: "0 4px 16px rgba(0, 0, 0, 0.2)",
-        transition: "all 0.25s ease",
-        ":hover": {
-            borderColor: "rgba(255, 255, 255, 0.1)",
-            boxShadow: "0 6px 20px rgba(0, 0, 0, 0.25)",
-        },
+        transitionProperty: "all",
+        transitionDuration: "0.25s",
+        transitionTimingFunction: "ease",
     },
     messageContent: {
         fontSize: "15px",
@@ -32,19 +29,21 @@ const useStyles = makeStyles({
     loadingContainer: {
         display: "flex",
         flexDirection: "column",
-        gap: "10px",
-        padding: "8px 0",
+        ...shorthands.gap("10px"),
+        ...shorthands.padding("8px", "0"),
     },
     loadingLine: {
         height: "14px",
-        borderRadius: "8px",
-        background: "linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.2) 50%, rgba(99, 102, 241, 0.1) 100%)",
+        ...shorthands.borderRadius("8px"),
+        backgroundImage: "linear-gradient(90deg, rgba(99, 102, 241, 0.1) 0%, rgba(139, 92, 246, 0.2) 50%, rgba(99, 102, 241, 0.1) 100%)",
         backgroundSize: "200% 100%",
-        animation: "shimmer 1.5s ease-in-out infinite",
-    },
-    "@keyframes shimmer": {
-        "0%": { backgroundPosition: "-200% 0" },
-        "100%": { backgroundPosition: "200% 0" },
+        animationName: {
+            "0%": { backgroundPosition: "-200% 0" },
+            "100%": { backgroundPosition: "200% 0" },
+        },
+        animationDuration: "1.5s",
+        animationTimingFunction: "ease-in-out",
+        animationIterationCount: "infinite",
     },
 });
 
