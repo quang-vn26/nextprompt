@@ -6,10 +6,10 @@ interface ChatMessage {
     content: string;
 }
 
-// Retry configuration
-const MAX_RETRIES = 3;
-const INITIAL_DELAY_MS = 5000; // 5 seconds
-const MAX_DELAY_MS = 60000; // 60 seconds
+// Optimized retry configuration - faster retries
+const MAX_RETRIES = 2;
+const INITIAL_DELAY_MS = 2000; // 2 seconds (reduced from 5s)
+const MAX_DELAY_MS = 10000; // 10 seconds (reduced from 60s)
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -19,9 +19,9 @@ const getRetryDelay = (error: any, attempt: number): number => {
     // Try to extract "retry after" from error message (e.g., "Please try again in 20s")
     const match = error?.message?.match(/try again in (\d+)s/i);
     if (match) {
-        return parseInt(match[1]) * 1000 + 1000; // Add 1 second buffer
+        return Math.min(parseInt(match[1]) * 1000, MAX_DELAY_MS);
     }
-    // Exponential backoff: 5s, 10s, 20s...
+    // Exponential backoff: 2s, 4s...
     return Math.min(INITIAL_DELAY_MS * Math.pow(2, attempt), MAX_DELAY_MS);
 };
 
@@ -52,8 +52,15 @@ export class ChatService {
         }
 
         this.genAI = new GoogleGenerativeAI(geminiApiKey || "");
+        // Using gemini-2.0-flash for faster responses
         this.model = geminiApiKey
-            ? this.genAI.getGenerativeModel({ model: "gemini-2.5-flash" })
+            ? this.genAI.getGenerativeModel({
+                model: "gemini-2.0-flash",
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 2048, // Limit output for faster response
+                }
+            })
             : null;
 
         // OpenAI fallback client
@@ -72,7 +79,7 @@ export class ChatService {
         onContent: (content: string, done: boolean) => void,
         options?: { signal?: AbortSignal },
     ): Promise<void> {
-        console.log("📨 Chat request:", JSON.stringify(messages, null, 2));
+        console.log("📨 Chat request");
 
         // Try Gemini first with retry, fallback to OpenAI on error
         try {
@@ -117,8 +124,7 @@ export class ChatService {
                 if (isRateLimitError(error)) {
                     const retryDelay = getRetryDelay(error, attempt);
                     console.warn(
-                        `⏳ ${apiName} rate limit hit (attempt ${attempt + 1}/${MAX_RETRIES}). ` +
-                        `Retrying in ${Math.round(retryDelay / 1000)}s...`
+                        `⏳ ${apiName} rate limit (${attempt + 1}/${MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
                     );
                     await delay(retryDelay);
                 } else {
@@ -147,7 +153,14 @@ export class ChatService {
         // Handle system instruction if present
         const systemMsg = messages.find(m => m.role === "system");
         const activeModel = systemMsg
-            ? this.genAI.getGenerativeModel({ model: "gemini-2.5-flash", systemInstruction: systemMsg.content })
+            ? this.genAI.getGenerativeModel({
+                model: "gemini-2.0-flash",
+                systemInstruction: systemMsg.content,
+                generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 2048,
+                }
+            })
             : this.model;
 
         const chat = activeModel.startChat({
@@ -183,6 +196,8 @@ export class ChatService {
             model: this.openaiModel,
             messages: openaiMessages,
             stream: true,
+            temperature: 0.7,
+            max_tokens: 2048,
         });
 
         let accumulatedContent = "";
@@ -218,6 +233,8 @@ export class ChatService {
             const response = await this.openai.chat.completions.create({
                 model: this.openaiModel,
                 messages: openaiMessages,
+                temperature: 0.7,
+                max_tokens: 2048,
             });
             return response.choices[0]?.message?.content || "";
         }
