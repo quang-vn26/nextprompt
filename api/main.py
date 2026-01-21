@@ -1,12 +1,21 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 from database import get_db, test_connection
 from dotenv import load_dotenv
 import os
+import logging
+import uuid
+from schemas import HealthCheckResponse, TestInsertResponse, TestInsertData, ErrorResponse
+from models import User, Conversation, Message
 
 # Load environment variables
 load_dotenv()
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("api.main")
 
 # Gemini model configuration
 GEMINI_MODEL = "gemini-2.5-flash"
@@ -33,16 +42,17 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Run on application startup"""
-    print("🚀 Starting NextPrompt API...")
+    logger.info("🚀 Starting NextPrompt API...")
     
     # Test database connection
+    # Note: test_connection is synchronous, so we should run it carefully or accept it blocks startup briefly
     if test_connection():
-        print("✅ Database connection successful")
+        logger.info("✅ Database connection successful")
     else:
-        print("❌ Database connection failed")
+        logger.error("❌ Database connection failed")
 
 
-@app.get("/")
+@app.get("/", tags=["General"])
 async def root():
     """Root endpoint"""
     return {
@@ -52,18 +62,18 @@ async def root():
     }
 
 
-@app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
+@app.get("/health", response_model=HealthCheckResponse, tags=["General"])
+def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint
-    Verifies API and database connectivity
+    Verifies API and database connectivity.
+    Defined as sync function to avoid blocking event loop with sync DB driver.
     """
-    from sqlalchemy import text
-    # Test database
     db_status = "connected"
     try:
         db.execute(text("SELECT 1"))
     except Exception as e:
+        logger.error(f"Health check DB error: {e}")
         db_status = f"error: {str(e)}"
     
     return {
@@ -73,15 +83,13 @@ async def health_check(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/test-insert")
-async def test_insert(db: Session = Depends(get_db)):
+@app.get("/test-insert", response_model=TestInsertResponse, tags=["Dev"])
+def test_insert(db: Session = Depends(get_db)):
     """
     Test endpoint to insert and read a sample message
-    Day 1 acceptance criteria verification
+    Day 1 acceptance criteria verification.
+    Defined as sync function to avoid blocking event loop with sync DB driver.
     """
-    from models import User, Conversation, Message
-    import uuid
-    
     try:
         # Create test user
         test_device_id = f"test-device-{uuid.uuid4()}"
@@ -109,23 +117,31 @@ async def test_insert(db: Session = Depends(get_db)):
         # Read back the message
         retrieved_message = db.query(Message).filter(Message.id == message.id).first()
         
-        return {
-            "status": "success",
-            "message": "Sample message inserted and retrieved successfully",
-            "data": {
-                "user_id": str(user.id),
-                "conversation_id": str(conversation.id),
-                "message_id": str(message.id),
-                "message_content": retrieved_message.content_text,
-                "created_at": retrieved_message.created_at.isoformat()
-            }
-        }
+        if not retrieved_message:
+             raise HTTPException(status_code=500, detail="Failed to retrieve inserted message")
+
+        return TestInsertResponse(
+            status="success",
+            message="Sample message inserted and retrieved successfully",
+            data=TestInsertData(
+                user_id=str(user.id),
+                conversation_id=str(conversation.id),
+                message_id=str(message.id),
+                message_content=retrieved_message.content_text,
+                created_at=retrieved_message.created_at.isoformat()
+            )
+        )
+    except HTTPException:
+        db.rollback()
+        raise
     except Exception as e:
         db.rollback()
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+        logger.error(f"Test insert failed: {e}")
+        # Return error response structure fitting the schema or raise HTTPException
+        # Since response_model is TestInsertResponse, returning a dict that matches is ok,
+        # or raising HTTPException.
+        # Here we raise HTTPException to be cleaner.
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
