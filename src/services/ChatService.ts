@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import OpenAI from "openai";
 
 interface ChatMessage {
@@ -38,7 +38,7 @@ const isRateLimitError = (error: any): boolean => {
 
 export class ChatService {
     private genAI: GoogleGenerativeAI;
-    private model: any;
+    private model: GenerativeModel | null;
     private openai: OpenAI;
     private openaiModel: string = "gpt-4.1-mini";
 
@@ -68,6 +68,9 @@ export class ChatService {
         if (!openaiApiKey) {
             console.warn("OpenAI API key not found. Fallback will not work.");
         }
+
+        // SECURITY WARNING: dangerouslyAllowBrowser: true is unsafe for production if the API key
+        // is exposed to the client. Ideally, requests should be proxied through a backend service.
         this.openai = new OpenAI({
             apiKey: openaiApiKey || "",
             dangerouslyAllowBrowser: true,
@@ -79,30 +82,24 @@ export class ChatService {
         onContent: (content: string, done: boolean) => void,
         options?: { signal?: AbortSignal },
     ): Promise<void> {
-        console.log("📨 Chat request");
-
         // Try Gemini first with retry, fallback to OpenAI on error
         try {
             if (!this.model) {
                 throw new Error("Gemini API key not configured");
             }
-            console.log("🔷 Using Gemini API...");
             await this.streamWithRetry(
                 () => this.streamWithGemini(messages, onContent, options),
                 "Gemini"
             );
-            console.log("✅ Gemini (gemini-2.5-flash) response completed");
         } catch (geminiError) {
-            console.warn("⚠️ Gemini API failed:", geminiError);
-            console.log("🔶 Falling back to OpenAI...");
+            console.warn("Gemini API failed, falling back to OpenAI:", geminiError);
             try {
                 await this.streamWithRetry(
                     () => this.streamWithOpenAI(messages, onContent, options),
                     "OpenAI"
                 );
-                console.log("✅ OpenAI (gpt-4.1-mini) response completed");
             } catch (openaiError) {
-                console.error("❌ OpenAI also failed:", openaiError);
+                console.error("OpenAI also failed:", openaiError);
                 throw openaiError;
             }
         }
@@ -124,7 +121,7 @@ export class ChatService {
                 if (isRateLimitError(error)) {
                     const retryDelay = getRetryDelay(error, attempt);
                     console.warn(
-                        `⏳ ${apiName} rate limit (${attempt + 1}/${MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
+                        `${apiName} rate limit (${attempt + 1}/${MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
                     );
                     await delay(retryDelay);
                 } else {
@@ -135,7 +132,6 @@ export class ChatService {
         }
 
         // All retries exhausted
-        console.error(`❌ ${apiName}: All ${MAX_RETRIES} retry attempts failed`);
         throw lastError;
     }
 
@@ -144,6 +140,8 @@ export class ChatService {
         onContent: (content: string, done: boolean) => void,
         _options?: { signal?: AbortSignal },
     ): Promise<void> {
+        if (!this.model) throw new Error("Model not initialized");
+
         // Convert history to Gemini format (excluding the last message which is the latest prompt)
         const history = messages.slice(0, -1).map(msg => ({
             role: msg.role === "assistant" ? "model" : "user",
