@@ -1,9 +1,20 @@
+import logging
+import os
+import uuid
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
-from database import get_db, test_connection
 from dotenv import load_dotenv
-import os
+
+from database import get_db, test_connection
+from models import User, Conversation, Message
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Load environment variables
 load_dotenv()
@@ -11,11 +22,30 @@ load_dotenv()
 # Gemini model configuration
 GEMINI_MODEL = "gemini-2.5-flash"
 
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """
+    Lifespan context manager for startup and shutdown events.
+    Replaces the deprecated @app.on_event("startup").
+    """
+    logger.info("🚀 Starting NextPrompt API...")
+
+    # Test database connection
+    if test_connection():
+        logger.info("✅ Database connection successful")
+    else:
+        logger.error("❌ Database connection failed")
+
+    yield
+
+    logger.info("🛑 Shutting down NextPrompt API...")
+
 # Create FastAPI app
 app = FastAPI(
     title="NextPrompt API",
     description="AI Chatbot with Gemini - Multimodal chat with dynamic options and next-prompt suggestions",
-    version="1.0.0"
+    version="1.0.0",
+    lifespan=lifespan
 )
 
 # CORS configuration
@@ -30,18 +60,6 @@ app.add_middleware(
 )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup"""
-    print("🚀 Starting NextPrompt API...")
-    
-    # Test database connection
-    if test_connection():
-        print("✅ Database connection successful")
-    else:
-        print("❌ Database connection failed")
-
-
 @app.get("/")
 async def root():
     """Root endpoint"""
@@ -53,17 +71,17 @@ async def root():
 
 
 @app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
+def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint
     Verifies API and database connectivity
     """
-    from sqlalchemy import text
     # Test database
     db_status = "connected"
     try:
         db.execute(text("SELECT 1"))
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
         db_status = f"error: {str(e)}"
     
     return {
@@ -74,14 +92,11 @@ async def health_check(db: Session = Depends(get_db)):
 
 
 @app.get("/test-insert")
-async def test_insert(db: Session = Depends(get_db)):
+def test_insert(db: Session = Depends(get_db)):
     """
     Test endpoint to insert and read a sample message
     Day 1 acceptance criteria verification
     """
-    from models import User, Conversation, Message
-    import uuid
-    
     try:
         # Create test user
         test_device_id = f"test-device-{uuid.uuid4()}"
@@ -122,6 +137,7 @@ async def test_insert(db: Session = Depends(get_db)):
         }
     except Exception as e:
         db.rollback()
+        logger.error(f"Test insert failed: {e}")
         return {
             "status": "error",
             "message": str(e)
