@@ -5,3 +5,4 @@ export { ChatInput } from "./ChatInput";
 export { MarkdownRenderer } from "./MarkdownRenderer";
 export { ChatHistory } from "./ChatHistory";
 export { ChatOptionsPanel } from "./ChatOptionsPanel";
+export { ChatPanel } from "./ChatPanel";
