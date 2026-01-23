@@ -5,13 +5,7 @@ import { motion, AnimatePresence } from 'framer-motion'
 import { Send, Sparkles, Loader2, ChevronRight } from 'lucide-react'
 import ChatMessage from '@/components/ChatMessage'
 import Sidebar from '@/components/Sidebar'
-
-interface Message {
-    id: string
-    role: 'user' | 'assistant'
-    content: string
-    timestamp: Date
-}
+import { Message } from '@/types'
 
 const quickActions = [
     "Explain quantum computing",
