@@ -1,4 +1,4 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import OpenAI from "openai";
 
 interface ChatMessage {
@@ -6,16 +6,30 @@ interface ChatMessage {
     content: string;
 }
 
+interface ApiError {
+    message?: string;
+    status?: number;
+    response?: {
+        status?: number;
+    };
+}
+
+// Configuration Constants
+const GEMINI_MODEL = "gemini-2.5-flash";
+const OPENAI_MODEL = "gpt-4.1-mini";
+const MAX_OUTPUT_TOKENS = 2048;
+const TEMPERATURE = 0.7;
+
 // Optimized retry configuration - faster retries
 const MAX_RETRIES = 2;
-const INITIAL_DELAY_MS = 2000; // 2 seconds (reduced from 5s)
-const MAX_DELAY_MS = 10000; // 10 seconds (reduced from 60s)
+const INITIAL_DELAY_MS = 2000; // 2 seconds
+const MAX_DELAY_MS = 10000; // 10 seconds
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper function to extract retry delay from error response
-const getRetryDelay = (error: any, attempt: number): number => {
+const getRetryDelay = (error: ApiError, attempt: number): number => {
     // Try to extract "retry after" from error message (e.g., "Please try again in 20s")
     const match = error?.message?.match(/try again in (\d+)s/i);
     if (match) {
@@ -26,7 +40,7 @@ const getRetryDelay = (error: any, attempt: number): number => {
 };
 
 // Check if error is a rate limit error
-const isRateLimitError = (error: any): boolean => {
+const isRateLimitError = (error: ApiError): boolean => {
     const message = error?.message?.toLowerCase() || "";
     const status = error?.status || error?.response?.status;
     return status === 429 ||
@@ -38,13 +52,16 @@ const isRateLimitError = (error: any): boolean => {
 
 export class ChatService {
     private genAI: GoogleGenerativeAI;
-    private model: any;
+    private model: GenerativeModel | null;
     private openai: OpenAI;
-    private openaiModel: string = "gpt-4.1-mini";
+    private openaiModel: string = OPENAI_MODEL;
 
     constructor() {
         const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
+        // SECURITY WARNING: API keys are exposed in the client-side code.
+        // This is not recommended for production environments.
+        // Ideally, these calls should be proxied through a backend service.
         if (!geminiApiKey) {
             console.warn(
                 "Gemini API key not found. Will use OpenAI as primary.",
@@ -52,13 +69,13 @@ export class ChatService {
         }
 
         this.genAI = new GoogleGenerativeAI(geminiApiKey || "");
-        // Using gemini-2.0-flash for faster responses
+
         this.model = geminiApiKey
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: GEMINI_MODEL,
                 generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 2048, // Limit output for faster response
+                    temperature: TEMPERATURE,
+                    maxOutputTokens: MAX_OUTPUT_TOKENS,
                 }
             })
             : null;
@@ -68,6 +85,8 @@ export class ChatService {
         if (!openaiApiKey) {
             console.warn("OpenAI API key not found. Fallback will not work.");
         }
+
+        // SECURITY WARNING: dangerouslyAllowBrowser: true explicitly allows client-side usage of the key.
         this.openai = new OpenAI({
             apiKey: openaiApiKey || "",
             dangerouslyAllowBrowser: true,
@@ -79,28 +98,28 @@ export class ChatService {
         onContent: (content: string, done: boolean) => void,
         options?: { signal?: AbortSignal },
     ): Promise<void> {
-        console.log("📨 Chat request");
+        console.debug("📨 Chat request");
 
         // Try Gemini first with retry, fallback to OpenAI on error
         try {
             if (!this.model) {
                 throw new Error("Gemini API key not configured");
             }
-            console.log("🔷 Using Gemini API...");
+            console.debug("🔷 Using Gemini API...");
             await this.streamWithRetry(
                 () => this.streamWithGemini(messages, onContent, options),
                 "Gemini"
             );
-            console.log("✅ Gemini (gemini-2.5-flash) response completed");
+            console.debug(`✅ Gemini (${GEMINI_MODEL}) response completed`);
         } catch (geminiError) {
             console.warn("⚠️ Gemini API failed:", geminiError);
-            console.log("🔶 Falling back to OpenAI...");
+            console.debug("🔶 Falling back to OpenAI...");
             try {
                 await this.streamWithRetry(
                     () => this.streamWithOpenAI(messages, onContent, options),
                     "OpenAI"
                 );
-                console.log("✅ OpenAI (gpt-4.1-mini) response completed");
+                console.debug(`✅ OpenAI (${OPENAI_MODEL}) response completed`);
             } catch (openaiError) {
                 console.error("❌ OpenAI also failed:", openaiError);
                 throw openaiError;
@@ -145,26 +164,34 @@ export class ChatService {
         _options?: { signal?: AbortSignal },
     ): Promise<void> {
         // Convert history to Gemini format (excluding the last message which is the latest prompt)
-        const history = messages.slice(0, -1).map(msg => ({
-            role: msg.role === "assistant" ? "model" : "user",
-            parts: [{ text: msg.content }],
-        }));
+        // Also exclude system messages from the history array as they are handled via systemInstruction
+        const history = messages
+            .slice(0, -1)
+            .filter(msg => msg.role !== "system")
+            .map(msg => ({
+                role: msg.role === "assistant" ? "model" : "user",
+                parts: [{ text: msg.content }],
+            }));
 
         // Handle system instruction if present
         const systemMsg = messages.find(m => m.role === "system");
         const activeModel = systemMsg
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: GEMINI_MODEL,
                 systemInstruction: systemMsg.content,
                 generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 2048,
+                    temperature: TEMPERATURE,
+                    maxOutputTokens: MAX_OUTPUT_TOKENS,
                 }
             })
             : this.model;
 
+        if (!activeModel) {
+             throw new Error("Gemini model not initialized");
+        }
+
         const chat = activeModel.startChat({
-            history: history.filter(h => h.role !== "system"),
+            history: history,
         });
 
         const lastMessage = messages[messages.length - 1].content;
@@ -196,8 +223,8 @@ export class ChatService {
             model: this.openaiModel,
             messages: openaiMessages,
             stream: true,
-            temperature: 0.7,
-            max_tokens: 2048,
+            temperature: TEMPERATURE,
+            max_tokens: MAX_OUTPUT_TOKENS,
         });
 
         let accumulatedContent = "";
@@ -233,8 +260,8 @@ export class ChatService {
             const response = await this.openai.chat.completions.create({
                 model: this.openaiModel,
                 messages: openaiMessages,
-                temperature: 0.7,
-                max_tokens: 2048,
+                temperature: TEMPERATURE,
+                max_tokens: MAX_OUTPUT_TOKENS,
             });
             return response.choices[0]?.message?.content || "";
         }
