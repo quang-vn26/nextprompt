@@ -1,4 +1,4 @@
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from dotenv import load_dotenv
@@ -44,7 +44,6 @@ def get_db():
 # Test database connection
 def test_connection():
     """Test database connection"""
-    from sqlalchemy import text
     try:
         with engine.connect() as conn:
             conn.execute(text("SELECT 1"))
