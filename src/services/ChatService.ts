@@ -1,7 +1,8 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import OpenAI from "openai";
+import { Config } from "../config";
 
-interface ChatMessage {
+export interface ChatMessage {
     role: "user" | "assistant" | "system";
     content: string;
 }
@@ -38,24 +39,20 @@ const isRateLimitError = (error: any): boolean => {
 
 export class ChatService {
     private genAI: GoogleGenerativeAI;
-    private model: any;
+    private model: GenerativeModel | null;
     private openai: OpenAI;
-    private openaiModel: string = "gpt-4.1-mini";
+    private openaiModel: string;
+    private geminiModel: string;
 
-    constructor() {
-        const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+    constructor(config: Config) {
+        this.genAI = new GoogleGenerativeAI(config.geminiApiKey);
+        this.geminiModel = config.geminiModel;
+        this.openaiModel = config.openaiModel;
 
-        if (!geminiApiKey) {
-            console.warn(
-                "Gemini API key not found. Will use OpenAI as primary.",
-            );
-        }
-
-        this.genAI = new GoogleGenerativeAI(geminiApiKey || "");
-        // Using gemini-2.0-flash for faster responses
-        this.model = geminiApiKey
+        // Using configured gemini model for faster responses
+        this.model = config.geminiApiKey
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: this.geminiModel,
                 generationConfig: {
                     temperature: 0.7,
                     maxOutputTokens: 2048, // Limit output for faster response
@@ -63,13 +60,8 @@ export class ChatService {
             })
             : null;
 
-        // OpenAI fallback client
-        const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
-        if (!openaiApiKey) {
-            console.warn("OpenAI API key not found. Fallback will not work.");
-        }
         this.openai = new OpenAI({
-            apiKey: openaiApiKey || "",
+            apiKey: config.openaiApiKey,
             dangerouslyAllowBrowser: true,
         });
     }
@@ -91,7 +83,7 @@ export class ChatService {
                 () => this.streamWithGemini(messages, onContent, options),
                 "Gemini"
             );
-            console.log("✅ Gemini (gemini-2.5-flash) response completed");
+            console.log(`✅ Gemini (${this.geminiModel}) response completed`);
         } catch (geminiError) {
             console.warn("⚠️ Gemini API failed:", geminiError);
             console.log("🔶 Falling back to OpenAI...");
@@ -100,7 +92,7 @@ export class ChatService {
                     () => this.streamWithOpenAI(messages, onContent, options),
                     "OpenAI"
                 );
-                console.log("✅ OpenAI (gpt-4.1-mini) response completed");
+                console.log(`✅ OpenAI (${this.openaiModel}) response completed`);
             } catch (openaiError) {
                 console.error("❌ OpenAI also failed:", openaiError);
                 throw openaiError;
@@ -144,6 +136,8 @@ export class ChatService {
         onContent: (content: string, done: boolean) => void,
         _options?: { signal?: AbortSignal },
     ): Promise<void> {
+        if (!this.model) throw new Error("Gemini model not initialized");
+
         // Convert history to Gemini format (excluding the last message which is the latest prompt)
         const history = messages.slice(0, -1).map(msg => ({
             role: msg.role === "assistant" ? "model" : "user",
@@ -154,7 +148,7 @@ export class ChatService {
         const systemMsg = messages.find(m => m.role === "system");
         const activeModel = systemMsg
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: this.geminiModel,
                 systemInstruction: systemMsg.content,
                 generationConfig: {
                     temperature: 0.7,
