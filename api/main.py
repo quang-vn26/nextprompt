@@ -2,58 +2,59 @@ from fastapi import FastAPI, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from sqlalchemy.orm import Session
 from database import get_db, test_connection
-from dotenv import load_dotenv
-import os
+from contextlib import asynccontextmanager
+from config import settings
+import logging
 
-# Load environment variables
-load_dotenv()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Gemini model configuration
-GEMINI_MODEL = "gemini-2.5-flash"
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Run on application startup and shutdown"""
+    logger.info("🚀 Starting NextPrompt API...")
+
+    # Test database connection
+    if test_connection():
+        logger.info("✅ Database connection successful")
+    else:
+        logger.error("❌ Database connection failed")
+
+    yield
+
+    logger.info("🛑 Stopping NextPrompt API...")
 
 # Create FastAPI app
 app = FastAPI(
-    title="NextPrompt API",
-    description="AI Chatbot with Gemini - Multimodal chat with dynamic options and next-prompt suggestions",
-    version="1.0.0"
+    title=settings.APP_TITLE,
+    description=settings.APP_DESCRIPTION,
+    version=settings.APP_VERSION,
+    lifespan=lifespan
 )
 
 # CORS configuration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
 
 
-@app.on_event("startup")
-async def startup_event():
-    """Run on application startup"""
-    print("🚀 Starting NextPrompt API...")
-    
-    # Test database connection
-    if test_connection():
-        print("✅ Database connection successful")
-    else:
-        print("❌ Database connection failed")
-
-
 @app.get("/")
 async def root():
     """Root endpoint"""
     return {
-        "message": "NextPrompt API",
-        "version": "1.0.0",
+        "message": settings.APP_TITLE,
+        "version": settings.APP_VERSION,
         "docs": "/docs"
     }
 
 
 @app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
+def health_check(db: Session = Depends(get_db)):
     """
     Health check endpoint
     Verifies API and database connectivity
@@ -64,17 +65,18 @@ async def health_check(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
     except Exception as e:
+        logger.error(f"Health check failed: {e}")
         db_status = f"error: {str(e)}"
     
     return {
         "status": "ok",
         "database": db_status,
-        "api_version": "1.0.0"
+        "api_version": settings.APP_VERSION
     }
 
 
 @app.get("/test-insert")
-async def test_insert(db: Session = Depends(get_db)):
+def test_insert(db: Session = Depends(get_db)):
     """
     Test endpoint to insert and read a sample message
     Day 1 acceptance criteria verification
@@ -121,6 +123,7 @@ async def test_insert(db: Session = Depends(get_db)):
             }
         }
     except Exception as e:
+        logger.error(f"Test insert failed: {e}")
         db.rollback()
         return {
             "status": "error",
