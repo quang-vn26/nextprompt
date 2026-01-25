@@ -19,6 +19,7 @@ import {
     compareChatParams,
 } from "./types";
 import { compactOptionSet, basicOptionSet, BasicOptions, VisualOptionSet } from "./lib/promptions-ui";
+import { useChat } from "./contexts/ChatContext";
 
 const useStyles = makeStyles({
     appContainer: {
@@ -80,8 +81,6 @@ const useStyles = makeStyles({
         },
     },
 });
-
-const chat = new ChatService();
 
 // Available option sets
 const availableOptionSets = [
@@ -222,8 +221,9 @@ const ChatPanel: React.FC<{
     styles: ReturnType<typeof useStyles>;
     currentOptionSet: VisualOptionSet<BasicOptions>;
     promptions: PromptionsService;
+    chatService: ChatService;
 }> = (props) => {
-    const { historyState, refreshRequest, pendingScroll, chatContainerRef, styles, currentOptionSet, promptions } =
+    const { historyState, refreshRequest, pendingScroll, chatContainerRef, styles, currentOptionSet, promptions, chatService } =
         props;
     const penultMessage = historyState.get.at(-2);
     const lastMessage = historyState.get.at(-1);
@@ -405,7 +405,7 @@ const ChatPanel: React.FC<{
                 }
 
                 try {
-                    await chat.streamChat(
+                    await chatService.streamChat(
                         history,
                         (content, done) => {
                             updateHistoryContent(content, done, historySet);
@@ -475,10 +475,12 @@ function App() {
     const [optionsPanelVisible, setOptionsPanelVisible] = React.useState(false);
     const styles = useStyles();
 
+    const { chatService, getPromptionsService } = useChat();
+
     // Create promptions service instance with current option set
     const promptions = React.useMemo(() => {
-        return new PromptionsService(chat, currentOptionSet);
-    }, [currentOptionSet]);
+        return getPromptionsService(currentOptionSet);
+    }, [currentOptionSet, getPromptionsService]);
 
     const historyState: State<HistoryMessage[]> = {
         get: history,
@@ -552,6 +554,7 @@ function App() {
                             styles={styles}
                             currentOptionSet={currentOptionSet}
                             promptions={promptions}
+                            chatService={chatService}
                         />
                     </div>
                 </div>
