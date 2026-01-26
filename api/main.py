@@ -1,15 +1,8 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
-from database import get_db, test_connection
-from dotenv import load_dotenv
-import os
-
-# Load environment variables
-load_dotenv()
-
-# Gemini model configuration
-GEMINI_MODEL = "gemini-2.5-flash"
+from database import test_connection
+from config import settings
+from routers import health, dev
 
 # Create FastAPI app
 app = FastAPI(
@@ -19,11 +12,9 @@ app = FastAPI(
 )
 
 # CORS configuration
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
-
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=allowed_origins,
+    allow_origins=settings.allowed_origins_list,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -51,82 +42,9 @@ async def root():
         "docs": "/docs"
     }
 
-
-@app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
-    """
-    Health check endpoint
-    Verifies API and database connectivity
-    """
-    from sqlalchemy import text
-    # Test database
-    db_status = "connected"
-    try:
-        db.execute(text("SELECT 1"))
-    except Exception as e:
-        db_status = f"error: {str(e)}"
-    
-    return {
-        "status": "ok",
-        "database": db_status,
-        "api_version": "1.0.0"
-    }
-
-
-@app.get("/test-insert")
-async def test_insert(db: Session = Depends(get_db)):
-    """
-    Test endpoint to insert and read a sample message
-    Day 1 acceptance criteria verification
-    """
-    from models import User, Conversation, Message
-    import uuid
-    
-    try:
-        # Create test user
-        test_device_id = f"test-device-{uuid.uuid4()}"
-        user = User(device_id=test_device_id)
-        db.add(user)
-        db.commit()
-        db.refresh(user)
-        
-        # Create test conversation
-        conversation = Conversation(user_id=user.id, title="Test Conversation")
-        db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
-        
-        # Create test message
-        message = Message(
-            conversation_id=conversation.id,
-            role="user",
-            content_text="This is a test message for Day 1 verification"
-        )
-        db.add(message)
-        db.commit()
-        db.refresh(message)
-        
-        # Read back the message
-        retrieved_message = db.query(Message).filter(Message.id == message.id).first()
-        
-        return {
-            "status": "success",
-            "message": "Sample message inserted and retrieved successfully",
-            "data": {
-                "user_id": str(user.id),
-                "conversation_id": str(conversation.id),
-                "message_id": str(message.id),
-                "message_content": retrieved_message.content_text,
-                "created_at": retrieved_message.created_at.isoformat()
-            }
-        }
-    except Exception as e:
-        db.rollback()
-        return {
-            "status": "error",
-            "message": str(e)
-        }
-
+# Include routers
+app.include_router(health.router)
+app.include_router(dev.router)
 
 if __name__ == "__main__":
     import uvicorn
