@@ -1,15 +1,11 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import OpenAI from "openai";
+import { CONFIG } from "../config";
 
 interface ChatMessage {
     role: "user" | "assistant" | "system";
     content: string;
 }
-
-// Optimized retry configuration - faster retries
-const MAX_RETRIES = 2;
-const INITIAL_DELAY_MS = 2000; // 2 seconds (reduced from 5s)
-const MAX_DELAY_MS = 10000; // 10 seconds (reduced from 60s)
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
@@ -19,10 +15,10 @@ const getRetryDelay = (error: any, attempt: number): number => {
     // Try to extract "retry after" from error message (e.g., "Please try again in 20s")
     const match = error?.message?.match(/try again in (\d+)s/i);
     if (match) {
-        return Math.min(parseInt(match[1]) * 1000, MAX_DELAY_MS);
+        return Math.min(parseInt(match[1]) * 1000, CONFIG.RETRY.MAX_DELAY_MS);
     }
     // Exponential backoff: 2s, 4s...
-    return Math.min(INITIAL_DELAY_MS * Math.pow(2, attempt), MAX_DELAY_MS);
+    return Math.min(CONFIG.RETRY.INITIAL_DELAY_MS * Math.pow(2, attempt), CONFIG.RETRY.MAX_DELAY_MS);
 };
 
 // Check if error is a rate limit error
@@ -38,12 +34,12 @@ const isRateLimitError = (error: any): boolean => {
 
 export class ChatService {
     private genAI: GoogleGenerativeAI;
-    private model: any;
+    private model: GenerativeModel | null;
     private openai: OpenAI;
-    private openaiModel: string = "gpt-4.1-mini";
+    private openaiModel: string = CONFIG.MODELS.OPENAI.NAME;
 
     constructor() {
-        const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
+        const geminiApiKey = CONFIG.API_KEYS.GEMINI;
 
         if (!geminiApiKey) {
             console.warn(
@@ -52,19 +48,19 @@ export class ChatService {
         }
 
         this.genAI = new GoogleGenerativeAI(geminiApiKey || "");
-        // Using gemini-2.0-flash for faster responses
+        // Using configured model for faster responses
         this.model = geminiApiKey
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: CONFIG.MODELS.GEMINI.NAME,
                 generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 2048, // Limit output for faster response
+                    temperature: CONFIG.MODELS.GEMINI.TEMP,
+                    maxOutputTokens: CONFIG.MODELS.GEMINI.MAX_TOKENS,
                 }
             })
             : null;
 
         // OpenAI fallback client
-        const openaiApiKey = import.meta.env.VITE_OPENAI_API_KEY;
+        const openaiApiKey = CONFIG.API_KEYS.OPENAI;
         if (!openaiApiKey) {
             console.warn("OpenAI API key not found. Fallback will not work.");
         }
@@ -91,7 +87,7 @@ export class ChatService {
                 () => this.streamWithGemini(messages, onContent, options),
                 "Gemini"
             );
-            console.log("✅ Gemini (gemini-2.5-flash) response completed");
+            console.log(`✅ Gemini (${CONFIG.MODELS.GEMINI.NAME}) response completed`);
         } catch (geminiError) {
             console.warn("⚠️ Gemini API failed:", geminiError);
             console.log("🔶 Falling back to OpenAI...");
@@ -100,7 +96,7 @@ export class ChatService {
                     () => this.streamWithOpenAI(messages, onContent, options),
                     "OpenAI"
                 );
-                console.log("✅ OpenAI (gpt-4.1-mini) response completed");
+                console.log(`✅ OpenAI (${CONFIG.MODELS.OPENAI.NAME}) response completed`);
             } catch (openaiError) {
                 console.error("❌ OpenAI also failed:", openaiError);
                 throw openaiError;
@@ -114,7 +110,7 @@ export class ChatService {
     ): Promise<void> {
         let lastError: any;
 
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        for (let attempt = 0; attempt < CONFIG.RETRY.MAX_RETRIES; attempt++) {
             try {
                 await fn();
                 return; // Success, exit
@@ -124,7 +120,7 @@ export class ChatService {
                 if (isRateLimitError(error)) {
                     const retryDelay = getRetryDelay(error, attempt);
                     console.warn(
-                        `⏳ ${apiName} rate limit (${attempt + 1}/${MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
+                        `⏳ ${apiName} rate limit (${attempt + 1}/${CONFIG.RETRY.MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
                     );
                     await delay(retryDelay);
                 } else {
@@ -135,7 +131,7 @@ export class ChatService {
         }
 
         // All retries exhausted
-        console.error(`❌ ${apiName}: All ${MAX_RETRIES} retry attempts failed`);
+        console.error(`❌ ${apiName}: All ${CONFIG.RETRY.MAX_RETRIES} retry attempts failed`);
         throw lastError;
     }
 
@@ -154,14 +150,18 @@ export class ChatService {
         const systemMsg = messages.find(m => m.role === "system");
         const activeModel = systemMsg
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: CONFIG.MODELS.GEMINI.NAME,
                 systemInstruction: systemMsg.content,
                 generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 2048,
+                    temperature: CONFIG.MODELS.GEMINI.TEMP,
+                    maxOutputTokens: CONFIG.MODELS.GEMINI.MAX_TOKENS,
                 }
             })
             : this.model;
+
+        if (!activeModel) {
+             throw new Error("Gemini model initialization failed");
+        }
 
         const chat = activeModel.startChat({
             history: history.filter(h => h.role !== "system"),
@@ -196,8 +196,8 @@ export class ChatService {
             model: this.openaiModel,
             messages: openaiMessages,
             stream: true,
-            temperature: 0.7,
-            max_tokens: 2048,
+            temperature: CONFIG.MODELS.OPENAI.TEMP,
+            max_tokens: CONFIG.MODELS.OPENAI.MAX_TOKENS,
         });
 
         let accumulatedContent = "";
@@ -233,8 +233,8 @@ export class ChatService {
             const response = await this.openai.chat.completions.create({
                 model: this.openaiModel,
                 messages: openaiMessages,
-                temperature: 0.7,
-                max_tokens: 2048,
+                temperature: CONFIG.MODELS.OPENAI.TEMP,
+                max_tokens: CONFIG.MODELS.OPENAI.MAX_TOKENS,
             });
             return response.choices[0]?.message?.content || "";
         }
