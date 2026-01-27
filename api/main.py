@@ -1,15 +1,27 @@
-from fastapi import FastAPI, Depends
+from fastapi import FastAPI, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from sqlalchemy.orm import Session
+from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy import select, text
 from database import get_db, test_connection
 from dotenv import load_dotenv
 import os
+import logging
+import schemas
+from models import User, Conversation, Message
+import uuid
 
 # Load environment variables
 load_dotenv()
 
+# Configure logging
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+)
+logger = logging.getLogger(__name__)
+
 # Gemini model configuration
-GEMINI_MODEL = "gemini-2.5-flash"
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 
 # Create FastAPI app
 app = FastAPI(
@@ -33,13 +45,13 @@ app.add_middleware(
 @app.on_event("startup")
 async def startup_event():
     """Run on application startup"""
-    print("🚀 Starting NextPrompt API...")
+    logger.info("🚀 Starting NextPrompt API...")
     
     # Test database connection
-    if test_connection():
-        print("✅ Database connection successful")
+    if await test_connection():
+        logger.info("✅ Database connection successful")
     else:
-        print("❌ Database connection failed")
+        logger.error("❌ Database connection failed")
 
 
 @app.get("/")
@@ -53,18 +65,18 @@ async def root():
 
 
 @app.get("/health")
-async def health_check(db: Session = Depends(get_db)):
+async def health_check(db: AsyncSession = Depends(get_db)):
     """
     Health check endpoint
     Verifies API and database connectivity
     """
-    from sqlalchemy import text
     # Test database
     db_status = "connected"
     try:
-        db.execute(text("SELECT 1"))
+        await db.execute(text("SELECT 1"))
     except Exception as e:
         db_status = f"error: {str(e)}"
+        logger.error(f"Health check failed: {e}")
     
     return {
         "status": "ok",
@@ -73,28 +85,26 @@ async def health_check(db: Session = Depends(get_db)):
     }
 
 
-@app.get("/test-insert")
-async def test_insert(db: Session = Depends(get_db)):
+@app.get("/test-insert", response_model=schemas.TestInsertResponse)
+async def test_insert(db: AsyncSession = Depends(get_db)):
     """
     Test endpoint to insert and read a sample message
     Day 1 acceptance criteria verification
     """
-    from models import User, Conversation, Message
-    import uuid
     
     try:
         # Create test user
         test_device_id = f"test-device-{uuid.uuid4()}"
         user = User(device_id=test_device_id)
         db.add(user)
-        db.commit()
-        db.refresh(user)
+        await db.commit()
+        await db.refresh(user)
         
         # Create test conversation
         conversation = Conversation(user_id=user.id, title="Test Conversation")
         db.add(conversation)
-        db.commit()
-        db.refresh(conversation)
+        await db.commit()
+        await db.refresh(conversation)
         
         # Create test message
         message = Message(
@@ -103,29 +113,35 @@ async def test_insert(db: Session = Depends(get_db)):
             content_text="This is a test message for Day 1 verification"
         )
         db.add(message)
-        db.commit()
-        db.refresh(message)
+        await db.commit()
+        await db.refresh(message)
         
         # Read back the message
-        retrieved_message = db.query(Message).filter(Message.id == message.id).first()
+        result = await db.execute(select(Message).filter(Message.id == message.id))
+        retrieved_message = result.scalars().first()
         
-        return {
-            "status": "success",
-            "message": "Sample message inserted and retrieved successfully",
-            "data": {
-                "user_id": str(user.id),
-                "conversation_id": str(conversation.id),
-                "message_id": str(message.id),
-                "message_content": retrieved_message.content_text,
-                "created_at": retrieved_message.created_at.isoformat()
-            }
-        }
+        if not retrieved_message:
+             raise HTTPException(status_code=404, detail="Message not found after insertion")
+
+        return schemas.TestInsertResponse(
+            status="success",
+            message="Sample message inserted and retrieved successfully",
+            data=schemas.TestInsertData(
+                user_id=str(user.id),
+                conversation_id=str(conversation.id),
+                message_id=str(message.id),
+                message_content=retrieved_message.content_text,
+                created_at=retrieved_message.created_at.isoformat()
+            )
+        )
     except Exception as e:
-        db.rollback()
-        return {
-            "status": "error",
-            "message": str(e)
-        }
+        await db.rollback()
+        logger.error(f"Test insert failed: {e}")
+        return schemas.TestInsertResponse(
+            status="error",
+            message=str(e),
+            data=None
+        )
 
 
 if __name__ == "__main__":
