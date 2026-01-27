@@ -15,6 +15,35 @@ export class PromptionsService {
         this.optionSet = optionSet;
     }
 
+    private async generateOptions(
+        systemPrompt: ChatMessage,
+        chatHistory: ChatMessage[],
+        onOptions: (options: Options, done: boolean) => void,
+        options?: { signal?: AbortSignal },
+    ): Promise<void> {
+        const messages: ChatMessage[] = [systemPrompt, ...chatHistory];
+
+        await this.chatService.streamChat(
+            messages,
+            (content, done) => {
+                if (done) {
+                    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
+                    const jsonText = jsonMatch ? jsonMatch[1] : content.trim();
+                    const parsedOptions = this.optionSet.validateJSON(jsonText);
+                    if (!parsedOptions) {
+                        throw new Error(`Invalid options JSON: ${jsonText}`);
+                    }
+                    return onOptions(parsedOptions, true);
+                }
+                const partialOptions = this.tryParsePartialOptions(content);
+                if (partialOptions) {
+                    onOptions(partialOptions, done);
+                }
+            },
+            options,
+        );
+    }
+
     async getOptions(
         chatHistory: ChatMessage[],
         onOptions: (options: Options, done: boolean) => void,
@@ -49,27 +78,7 @@ Example output format:
 `,
         };
 
-        const messages: ChatMessage[] = [systemPrompt, ...chatHistory];
-
-        await this.chatService.streamChat(
-            messages,
-            (content, done) => {
-                if (done) {
-                    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-                    const jsonText = jsonMatch ? jsonMatch[1] : content.trim();
-                    const parsedOptions = this.optionSet.validateJSON(jsonText);
-                    if (!parsedOptions) {
-                        throw new Error(`Invalid options JSON: ${jsonText}`);
-                    }
-                    return onOptions(parsedOptions, true);
-                }
-                const partialOptions = this.tryParsePartialOptions(content);
-                if (partialOptions) {
-                    onOptions(partialOptions, done);
-                }
-            },
-            options,
-        );
+        return this.generateOptions(systemPrompt, chatHistory, onOptions, options);
     }
 
     async refreshOptions(
@@ -113,27 +122,7 @@ Example output format:
 `,
         };
 
-        const messages: ChatMessage[] = [systemPrompt, ...chatHistory];
-
-        await this.chatService.streamChat(
-            messages,
-            (content, done) => {
-                if (done) {
-                    const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
-                    const jsonText = jsonMatch ? jsonMatch[1] : content.trim();
-                    const parsedOptions = this.optionSet.validateJSON(jsonText);
-                    if (!parsedOptions) {
-                        throw new Error(`Invalid options JSON: ${jsonText}`);
-                    }
-                    return onOptions(parsedOptions, true);
-                }
-                const partialOptions = this.tryParsePartialOptions(content);
-                if (partialOptions) {
-                    onOptions(partialOptions, done);
-                }
-            },
-            options,
-        );
+        return this.generateOptions(systemPrompt, chatHistory, onOptions, options);
     }
 
     private tryParsePartialOptions(optionsStr: string): Options | undefined {
@@ -142,6 +131,7 @@ Example output format:
             let jsonStr = jsonMatch ? jsonMatch[1] : optionsStr;
             return this.optionSet.validatePartialJSON?.(jsonStr);
         } catch (error) {
+            // Incomplete JSON or other parse error, expected during streaming
             return undefined;
         }
     }
