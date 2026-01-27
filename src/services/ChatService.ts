@@ -1,32 +1,36 @@
-import { GoogleGenerativeAI } from "@google/generative-ai";
+import { GoogleGenerativeAI, GenerativeModel } from "@google/generative-ai";
 import OpenAI from "openai";
+import { CONFIG } from "../config";
 
 interface ChatMessage {
     role: "user" | "assistant" | "system";
     content: string;
 }
 
-// Optimized retry configuration - faster retries
-const MAX_RETRIES = 2;
-const INITIAL_DELAY_MS = 2000; // 2 seconds (reduced from 5s)
-const MAX_DELAY_MS = 10000; // 10 seconds (reduced from 60s)
+interface RequestError {
+    message?: string;
+    status?: number;
+    response?: {
+        status: number;
+    };
+}
 
 // Helper function to delay execution
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Helper function to extract retry delay from error response
-const getRetryDelay = (error: any, attempt: number): number => {
+const getRetryDelay = (error: RequestError, attempt: number): number => {
     // Try to extract "retry after" from error message (e.g., "Please try again in 20s")
     const match = error?.message?.match(/try again in (\d+)s/i);
     if (match) {
-        return Math.min(parseInt(match[1]) * 1000, MAX_DELAY_MS);
+        return Math.min(parseInt(match[1]) * 1000, CONFIG.RETRY.MAX_DELAY_MS);
     }
     // Exponential backoff: 2s, 4s...
-    return Math.min(INITIAL_DELAY_MS * Math.pow(2, attempt), MAX_DELAY_MS);
+    return Math.min(CONFIG.RETRY.INITIAL_DELAY_MS * Math.pow(2, attempt), CONFIG.RETRY.MAX_DELAY_MS);
 };
 
 // Check if error is a rate limit error
-const isRateLimitError = (error: any): boolean => {
+const isRateLimitError = (error: RequestError): boolean => {
     const message = error?.message?.toLowerCase() || "";
     const status = error?.status || error?.response?.status;
     return status === 429 ||
@@ -38,11 +42,13 @@ const isRateLimitError = (error: any): boolean => {
 
 export class ChatService {
     private genAI: GoogleGenerativeAI;
-    private model: any;
+    private model: GenerativeModel | null;
     private openai: OpenAI;
-    private openaiModel: string = "gpt-4.1-mini";
+    private openaiModel: string = CONFIG.OPENAI_MODEL;
 
     constructor() {
+        // SECURITY WARNING: API keys are exposed in client-side code.
+        // This is not recommended for production. Use a backend proxy instead.
         const geminiApiKey = import.meta.env.VITE_GEMINI_API_KEY;
 
         if (!geminiApiKey) {
@@ -55,7 +61,7 @@ export class ChatService {
         // Using gemini-2.0-flash for faster responses
         this.model = geminiApiKey
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: CONFIG.GEMINI_MODEL,
                 generationConfig: {
                     temperature: 0.7,
                     maxOutputTokens: 2048, // Limit output for faster response
@@ -70,7 +76,7 @@ export class ChatService {
         }
         this.openai = new OpenAI({
             apiKey: openaiApiKey || "",
-            dangerouslyAllowBrowser: true,
+            dangerouslyAllowBrowser: true, // SECURITY WARNING: Allows client-side usage of API key
         });
     }
 
@@ -91,7 +97,7 @@ export class ChatService {
                 () => this.streamWithGemini(messages, onContent, options),
                 "Gemini"
             );
-            console.log("✅ Gemini (gemini-2.5-flash) response completed");
+            console.log(`✅ Gemini (${CONFIG.GEMINI_MODEL}) response completed`);
         } catch (geminiError) {
             console.warn("⚠️ Gemini API failed:", geminiError);
             console.log("🔶 Falling back to OpenAI...");
@@ -100,7 +106,7 @@ export class ChatService {
                     () => this.streamWithOpenAI(messages, onContent, options),
                     "OpenAI"
                 );
-                console.log("✅ OpenAI (gpt-4.1-mini) response completed");
+                console.log(`✅ OpenAI (${CONFIG.OPENAI_MODEL}) response completed`);
             } catch (openaiError) {
                 console.error("❌ OpenAI also failed:", openaiError);
                 throw openaiError;
@@ -112,19 +118,21 @@ export class ChatService {
         fn: () => Promise<void>,
         apiName: string
     ): Promise<void> {
-        let lastError: any;
+        let lastError: unknown;
 
-        for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+        for (let attempt = 0; attempt < CONFIG.RETRY.MAX_RETRIES; attempt++) {
             try {
                 await fn();
                 return; // Success, exit
-            } catch (error: any) {
+            } catch (error: unknown) {
                 lastError = error;
+                // Cast to RequestError for checking
+                const requestError = error as RequestError;
 
-                if (isRateLimitError(error)) {
-                    const retryDelay = getRetryDelay(error, attempt);
+                if (isRateLimitError(requestError)) {
+                    const retryDelay = getRetryDelay(requestError, attempt);
                     console.warn(
-                        `⏳ ${apiName} rate limit (${attempt + 1}/${MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
+                        `⏳ ${apiName} rate limit (${attempt + 1}/${CONFIG.RETRY.MAX_RETRIES}). Retrying in ${Math.round(retryDelay / 1000)}s...`
                     );
                     await delay(retryDelay);
                 } else {
@@ -135,7 +143,7 @@ export class ChatService {
         }
 
         // All retries exhausted
-        console.error(`❌ ${apiName}: All ${MAX_RETRIES} retry attempts failed`);
+        console.error(`❌ ${apiName}: All ${CONFIG.RETRY.MAX_RETRIES} retry attempts failed`);
         throw lastError;
     }
 
@@ -154,7 +162,7 @@ export class ChatService {
         const systemMsg = messages.find(m => m.role === "system");
         const activeModel = systemMsg
             ? this.genAI.getGenerativeModel({
-                model: "gemini-2.5-flash",
+                model: CONFIG.GEMINI_MODEL,
                 systemInstruction: systemMsg.content,
                 generationConfig: {
                     temperature: 0.7,
@@ -162,6 +170,11 @@ export class ChatService {
                 }
             })
             : this.model;
+
+        // Check if activeModel is null before using (it shouldn't be if this method is called after model check)
+        if (!activeModel) {
+             throw new Error("Gemini model not initialized");
+        }
 
         const chat = activeModel.startChat({
             history: history.filter(h => h.role !== "system"),
