@@ -1,9 +1,11 @@
 /**
  * AI Provider Module
- * Unified interface for Azure OpenAI (o4-mini) and Azure AI (Phi-4-reasoning)
+ * Unified interface for Azure OpenAI, Azure AI (Phi-4), and Google Gemini
+ * Implements fallback logic: Phi-4 -> OpenAI -> Gemini
  */
 
 import OpenAI from 'openai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
 import { ChatMessage, ChatRequest, ChatResponse, StreamChunk, ChatMode } from './types';
 import { logUsage } from './mongodb';
 
@@ -17,19 +19,22 @@ interface ProviderConfig {
     deployment: string;
 }
 
-// Azure OpenAI (o4-mini) - Primary for fast responses
+// Azure OpenAI (o4-mini) - Primary for fast responses or Fallback
 const AZURE_OPENAI_CONFIG: ProviderConfig = {
     endpoint: process.env.AZURE_OPENAI_ENDPOINT || '',
     apiKey: process.env.AZURE_OPENAI_API_KEY || '',
     deployment: process.env.AZURE_OPENAI_DEPLOYMENT || 'o4-mini',
 };
 
-// Azure AI (Phi-4-reasoning) - For deep thinking
+// Azure AI (Phi-4-reasoning) - Primary for reasoning
 const AZURE_PHI4_CONFIG: ProviderConfig = {
-    endpoint: process.env.AZURE_PHI4_ENDPOINT || '',
-    apiKey: process.env.AZURE_PHI4_API_KEY || '',
+    endpoint: process.env.AZURE_PHI4_ENDPOINT || process.env.VITE_PHI4_ENDPOINT || '',
+    apiKey: process.env.AZURE_PHI4_API_KEY || process.env.VITE_PHI4_API_KEY || '',
     deployment: process.env.AZURE_PHI4_DEPLOYMENT || 'Phi-4-reasoning',
 };
+
+// Gemini Configuration
+const GEMINI_API_KEY = process.env.GEMINI_API_KEY || process.env.VITE_GEMINI_API_KEY || '';
 
 // ============================================
 // AI Provider Class
@@ -38,6 +43,8 @@ const AZURE_PHI4_CONFIG: ProviderConfig = {
 export class AIProvider {
     private o4MiniClient: OpenAI | null = null;
     private phi4Client: OpenAI | null = null;
+    private geminiClient: GoogleGenerativeAI | null = null;
+    private geminiModel: any = null;
     private sessionId: string;
 
     constructor(sessionId: string = 'default') {
@@ -46,7 +53,7 @@ export class AIProvider {
     }
 
     /**
-     * Initialize OpenAI-compatible clients
+     * Initialize AI clients
      */
     private initializeClients(): void {
         // Initialize o4-mini client
@@ -70,92 +77,81 @@ export class AIProvider {
         } else {
             console.warn('⚠️ Azure Phi-4 API key not configured');
         }
+
+        // Initialize Gemini client
+        if (GEMINI_API_KEY) {
+            this.geminiClient = new GoogleGenerativeAI(GEMINI_API_KEY);
+            this.geminiModel = this.geminiClient.getGenerativeModel({ model: "gemini-2.5-flash" });
+            console.log('✅ Gemini (gemini-2.5-flash) client initialized');
+        } else {
+            console.warn('⚠️ Gemini API key not configured');
+        }
     }
 
     /**
-     * Get appropriate client based on mode
+     * Stream chat completion with automatic fallback
+     * Strategy: Phi-4 -> OpenAI -> Gemini
      */
-    private getClient(mode: ChatMode): { client: OpenAI; deployment: string; modelName: string } {
-        if (mode === 'fast' && this.o4MiniClient) {
-            return {
-                client: this.o4MiniClient,
-                deployment: AZURE_OPENAI_CONFIG.deployment,
-                modelName: 'o4-mini',
-            };
-        } else if (this.phi4Client) {
-            return {
-                client: this.phi4Client,
-                deployment: AZURE_PHI4_CONFIG.deployment,
-                modelName: 'Phi-4-reasoning',
-            };
-        } else if (this.o4MiniClient) {
-            // Fallback to o4-mini if Phi-4 not available
-            return {
-                client: this.o4MiniClient,
-                deployment: AZURE_OPENAI_CONFIG.deployment,
-                modelName: 'o4-mini',
-            };
+    async *streamChatWithFallback(request: ChatRequest): AsyncGenerator<StreamChunk> {
+        let lastError: any;
+
+        // 1. Try Phi-4 (if configured)
+        if (this.phi4Client) {
+            try {
+                console.log('🟣 Using Phi-4 (Azure AI)...');
+                const generator = this.streamOpenAI(this.phi4Client, AZURE_PHI4_CONFIG.deployment, request);
+                for await (const chunk of generator) {
+                    yield chunk;
+                }
+                return; // Success
+            } catch (error) {
+                console.warn('⚠️ Phi-4 API failed:', error);
+                lastError = error;
+            }
         }
 
-        throw new Error('No AI provider available. Please check your API keys.');
-    }
-
-    /**
-     * Send chat completion request (non-streaming)
-     */
-    async chatCompletion(request: ChatRequest): Promise<ChatResponse> {
-        const mode = request.model || 'fast';
-        const { client, deployment, modelName } = this.getClient(mode);
-
-        console.log(`🤖 Using ${modelName} for chat completion...`);
-
-        const response = await client.chat.completions.create({
-            model: deployment,
-            messages: request.messages.map(msg => ({
-                role: msg.role,
-                content: msg.content,
-            })),
-            temperature: request.temperature ?? 0.7,
-            max_tokens: request.maxTokens ?? 2048,
-        });
-
-        const content = response.choices[0]?.message?.content || '';
-        const usage = response.usage;
-
-        // Log usage to MongoDB
-        if (usage) {
-            await logUsage(
-                this.sessionId,
-                modelName,
-                usage.prompt_tokens,
-                usage.completion_tokens
-            );
+        // 2. Try OpenAI (if configured)
+        if (this.o4MiniClient) {
+            try {
+                console.log('🔶 Falling back to OpenAI (o4-mini)...');
+                const generator = this.streamOpenAI(this.o4MiniClient, AZURE_OPENAI_CONFIG.deployment, request);
+                for await (const chunk of generator) {
+                    yield chunk;
+                }
+                return; // Success
+            } catch (error) {
+                console.warn('⚠️ OpenAI API failed:', error);
+                lastError = error;
+            }
         }
 
-        return {
-            content,
-            model: modelName,
-            usage: usage ? {
-                promptTokens: usage.prompt_tokens,
-                completionTokens: usage.completion_tokens,
-                totalTokens: usage.total_tokens,
-            } : undefined,
-        };
+        // 3. Try Gemini (if configured)
+        if (this.geminiModel) {
+            try {
+                console.log('🔷 Falling back to Gemini...');
+                const generator = this.streamGemini(request);
+                for await (const chunk of generator) {
+                    yield chunk;
+                }
+                return; // Success
+            } catch (error) {
+                console.warn('⚠️ Gemini API failed:', error);
+                lastError = error;
+            }
+        }
+
+        // If we get here, all providers failed
+        throw lastError || new Error('No AI providers available or all failed.');
     }
 
     /**
-     * Stream chat completion with generator
+     * Helper to stream from OpenAI-compatible clients
      */
-    async *streamChat(request: ChatRequest): AsyncGenerator<StreamChunk> {
-        const mode = request.model || 'fast';
-        const { client, deployment, modelName } = this.getClient(mode);
-
-        console.log(`🤖 Using ${modelName} for streaming chat...`);
-
+    private async *streamOpenAI(client: OpenAI, model: string, request: ChatRequest): AsyncGenerator<StreamChunk> {
         const stream = await client.chat.completions.create({
-            model: deployment,
+            model: model,
             messages: request.messages.map(msg => ({
-                role: msg.role,
+                role: msg.role as any,
                 content: msg.content,
             })),
             temperature: request.temperature ?? 0.7,
@@ -179,6 +175,71 @@ export class AIProvider {
             content: accumulatedContent,
             done: true,
         };
+
+        // Log usage (approximate since streaming doesn't give usage in v1)
+        this.safeLogUsage(model, request.messages.length * 10, accumulatedContent.length / 4);
+    }
+
+    /**
+     * Helper to stream from Gemini
+     */
+    private async *streamGemini(request: ChatRequest): AsyncGenerator<StreamChunk> {
+        if (!this.geminiModel) throw new Error('Gemini not initialized');
+
+        // Convert messages to Gemini format
+        // Gemini expects history + current message.
+        // History roles: 'user' or 'model'
+        const history = request.messages.slice(0, -1).map(msg => ({
+            role: msg.role === 'assistant' ? 'model' : 'user',
+            parts: [{ text: msg.content }],
+        }));
+
+        const lastMessage = request.messages[request.messages.length - 1];
+        if (!lastMessage) throw new Error('No messages provided');
+
+        const chat = this.geminiModel.startChat({
+            history: history.filter(h => h.role === 'user' || h.role === 'model'),
+            generationConfig: {
+                temperature: request.temperature ?? 0.7,
+                maxOutputTokens: request.maxTokens ?? 2048,
+            },
+        });
+
+        const result = await chat.sendMessageStream(lastMessage.content);
+        let accumulatedContent = '';
+
+        for await (const chunk of result.stream) {
+            const text = chunk.text();
+            accumulatedContent += text;
+            yield {
+                content: accumulatedContent,
+                done: false,
+            };
+        }
+
+        yield {
+            content: accumulatedContent,
+            done: true,
+        };
+
+        this.safeLogUsage('gemini-2.5-flash', request.messages.length * 10, accumulatedContent.length / 4);
+    }
+
+    /**
+     * Safely log usage to MongoDB without throwing errors
+     */
+    private async safeLogUsage(model: string, promptTokens: number, completionTokens: number) {
+        try {
+            await logUsage(
+                this.sessionId,
+                model,
+                Math.round(promptTokens),
+                Math.round(completionTokens)
+            );
+        } catch (error) {
+            // Ignore DB logging errors to keep chat functional
+            console.warn('⚠️ Failed to log usage to MongoDB:', error);
+        }
     }
 
     /**
@@ -188,14 +249,15 @@ export class AIProvider {
         return [
             { name: 'o4-mini', available: !!this.o4MiniClient },
             { name: 'Phi-4-reasoning', available: !!this.phi4Client },
+            { name: 'gemini-2.5-flash', available: !!this.geminiClient },
         ];
     }
 
     /**
-     * Check if provider is ready
+     * Check if at least one provider is ready
      */
     isReady(): boolean {
-        return !!(this.o4MiniClient || this.phi4Client);
+        return !!(this.o4MiniClient || this.phi4Client || this.geminiClient);
     }
 }
 

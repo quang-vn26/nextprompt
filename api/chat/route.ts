@@ -54,7 +54,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
 
-            const streamGenerator = aiProvider.streamChat({
+            // Use fallback mechanism for streaming
+            const streamGenerator = aiProvider.streamChatWithFallback({
                 messages: messages as ChatMessage[],
                 model,
                 temperature,
@@ -75,6 +76,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         }
 
         // Handle non-streaming response
+        // Note: For now using standard completion without fallback.
+        // If fallback is needed for non-streaming, we can use streamChatWithFallback and buffer the result.
         const response = await aiProvider.chatCompletion({
             messages: messages as ChatMessage[],
             model,
