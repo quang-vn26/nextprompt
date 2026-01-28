@@ -1,92 +1,161 @@
 # Promptions Chat
 
-A modern chat interface built with React, Vite, Fluent UI, and OpenAI streaming responses.
+Ứng dụng chat AI hiện đại được xây dựng với React, Vite, Fluent UI và hỗ trợ đa AI providers với streaming responses.
 
-## Features
+## 🎯 Tổng Quan
 
-- 🎨 Beautiful UI with Microsoft Fluent UI components
-- 💬 Real-time streaming responses from OpenAI
-- ⚡ Fast development with Vite
-- 📱 Responsive design
-- ⌨️ Keyboard shortcuts (Enter to send, Shift+Enter for new line)
+Promptions Chat là một giao diện chat thông minh tích hợp nhiều mô hình AI với cơ chế fallback tự động:
 
-## Getting Started
+```
+Phi-4 (Azure AI) → OpenAI (GPT-4.1-mini) → Gemini (gemini-2.5-flash)
+```
 
-### Prerequisites
+## ✨ Tính Năng
+
+- 🎨 **UI hiện đại** với Microsoft Fluent UI và dark theme
+- 💬 **Streaming responses** - Phản hồi theo thời gian thực
+- 🔄 **Multi-provider fallback** - Tự động chuyển đổi khi API lỗi
+- ⚡ **Vite** - Build nhanh và hot module replacement
+- 📱 **Responsive** - Tương thích mọi kích thước màn hình
+- ⌨️ **Keyboard shortcuts** - Enter gửi tin, Shift+Enter xuống dòng
+- 🎛️ **Options Panel** - Tùy chỉnh các tham số prompt
+
+## 📁 Cấu Trúc Dự Án
+
+```
+promptions-chat/
+├── src/                      # Frontend source code
+│   ├── App.tsx               # Component chính, quản lý state và UI
+│   ├── components/           # React components
+│   │   ├── ChatInput.tsx     # Input box để gửi tin nhắn
+│   │   ├── ChatHistory.tsx   # Hiển thị lịch sử chat
+│   │   ├── ChatOptionsPanel.tsx  # Panel tùy chỉnh options
+│   │   ├── AssistantMessage.tsx  # Render tin nhắn AI
+│   │   ├── UserMessage.tsx   # Render tin nhắn người dùng
+│   │   └── MarkdownRenderer.tsx  # Render markdown với syntax highlighting
+│   ├── services/             # Business logic
+│   │   ├── ChatService.ts    # Xử lý gọi AI APIs với fallback
+│   │   └── PromptionsService.ts  # Xử lý prompt options/templates
+│   ├── lib/                  # Utilities và shared code
+│   └── types.ts              # TypeScript type definitions
+├── api/                      # Vercel serverless functions
+│   ├── chat/route.ts         # API endpoint cho chat
+│   └── lib/                  # Shared backend utilities
+│       ├── ai-provider.ts    # Abstract AI provider
+│       ├── mongodb.ts        # MongoDB connection
+│       └── types.ts          # Backend types
+├── index.html                # Entry point HTML
+├── vite.config.ts            # Vite configuration
+├── vercel.json               # Vercel deployment config
+└── package.json              # Dependencies và scripts
+```
+
+## 🏗️ Kiến Trúc
+
+### Frontend (`src/`)
+
+| File | Mô tả |
+|------|-------|
+| `App.tsx` | Component root, quản lý chat history, options state và auto-scroll |
+| `ChatService.ts` | Class xử lý streaming chat với retry logic và provider fallback |
+| `PromptionsService.ts` | Tạo và quản lý dynamic prompt options |
+
+### Backend (`api/`)
+
+| File | Mô tả |
+|------|-------|
+| `chat/route.ts` | Vercel serverless endpoint, xử lý POST requests và streaming |
+| `ai-provider.ts` | Factory pattern cho AI providers (Azure OpenAI, Phi-4) |
+| `mongodb.ts` | Kết nối và thao tác với MongoDB |
+
+### Luồng Hoạt Động
+
+```
+User Input → ChatInput → App.tsx (state update)
+    ↓
+ChatService.streamChat() 
+    ↓
+[Phi-4] --fail→ [OpenAI] --fail→ [Gemini]
+    ↓
+Streaming chunks → ChatHistory (render)
+```
+
+## 🚀 Cài Đặt
+
+### Yêu Cầu
 
 - Node.js 18+
-- Yarn (workspace package manager)
-- OpenAI API key
+- npm hoặc yarn
+- API keys (ít nhất 1 trong 3: Phi-4/OpenAI/Gemini)
 
-### Installation
-
-1. From the workspace root, install dependencies:
-
-    ```bash
-    yarn install
-    ```
-
-2. Navigate to the chat app directory:
-
-    ```bash
-    cd apps/promptions-chat
-    ```
-
-3. Copy the environment file and add your OpenAI API key:
-
-    ```bash
-    cp .env.example .env
-    ```
-
-    Edit `.env` and add your OpenAI API key:
-
-    ```
-    VITE_OPENAI_API_KEY=your_api_key_here
-    ```
-
-### Development
-
-Start the development server:
+### Bước 1: Clone và cài dependencies
 
 ```bash
-yarn dev
+npm install
 ```
 
-The app will be available at `http://localhost:3003`
-
-### Building
-
-Build the application for production:
+### Bước 2: Cấu hình environment
 
 ```bash
-yarn build
+cp .env.example .env
 ```
 
-### Type Checking
-
-Run TypeScript type checking:
+Chỉnh sửa file `.env`:
 
 ```bash
-yarn typecheck
+# Frontend API Keys
+VITE_GEMINI_API_KEY=your-gemini-key
+VITE_OPENAI_API_KEY=your-openai-key
+VITE_PHI4_ENDPOINT=https://your-resource.services.ai.azure.com/openai/v1/
+VITE_PHI4_API_KEY=your-phi4-key
+
+# Backend (Vercel serverless)
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com
+AZURE_OPENAI_API_KEY=your-azure-key
+MONGODB_URI=mongodb+srv://...
 ```
 
-## Architecture
+### Bước 3: Chạy development server
 
-- **React 18** - Modern React with hooks
-- **Vite** - Fast build tool and dev server
-- **Fluent UI** - Microsoft's design system
-- **OpenAI API** - GPT-3.5-turbo with streaming
-- **TypeScript** - Full type safety
+```bash
+npm run dev
+```
 
-## Security Notes
+Ứng dụng sẽ chạy tại `http://localhost:3003`
 
-⚠️ **Important**: This demo uses `dangerouslyAllowBrowser: true` for the OpenAI client, which exposes your API key in the browser. In a production application, you should:
+## 📜 Scripts
 
-1. Move OpenAI API calls to a backend server
-2. Implement proper authentication
-3. Use environment variables on the server side
-4. Add rate limiting and other security measures
+| Script | Mô tả |
+|--------|-------|
+| `npm run dev` | Khởi chạy dev server (port 3003) |
+| `npm run build` | Build production bundle |
+| `npm run preview` | Preview production build |
+| `npm run typecheck` | Kiểm tra TypeScript types |
+| `npm run clean` | Xóa thư mục dist |
 
-## Contributing
+## 🛠️ Tech Stack
 
-This is part of the promptions monorepo. Please see the main README for contribution guidelines.
+| Layer | Technology |
+|-------|------------|
+| **UI Framework** | React 18 |
+| **Build Tool** | Vite 7 |
+| **Design System** | Microsoft Fluent UI |
+| **Markdown** | react-markdown + rehype-highlight |
+| **AI Clients** | @google/generative-ai, openai SDK |
+| **State Management** | Immer |
+| **Validation** | Zod |
+| **Database** | MongoDB |
+| **Deployment** | Vercel |
+
+## ⚠️ Lưu Ý Bảo Mật
+
+> **Quan trọng**: Phiên bản demo sử dụng `dangerouslyAllowBrowser: true` cho OpenAI client, API key sẽ hiển thị trong browser. Với production:
+
+1. Di chuyển API calls sang backend (đã có trong `/api`)
+2. Sử dụng environment variables phía server
+3. Implement authentication và rate limiting
+
+## 📄 License
+
+MIT License
+
