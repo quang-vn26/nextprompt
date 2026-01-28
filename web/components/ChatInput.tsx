@@ -1,25 +1,26 @@
 'use client'
 
-import { useState, useRef, KeyboardEvent } from 'react'
+import { useState, useRef, KeyboardEvent, ChangeEvent } from 'react'
+import { Send, Paperclip, X, Image as ImageIcon } from 'lucide-react'
 
 interface ChatInputProps {
+    value: string
+    onChange: (value: string) => void
     onSend: (content: string, file?: File) => void
     disabled?: boolean
 }
 
-export default function ChatInput({ onSend, disabled }: ChatInputProps) {
-    const [input, setInput] = useState('')
+export default function ChatInput({ value, onChange, onSend, disabled }: ChatInputProps) {
     const [selectedFile, setSelectedFile] = useState<File | null>(null)
     const fileInputRef = useRef<HTMLInputElement>(null)
 
     const handleSubmit = () => {
-        if (!input.trim() && !selectedFile) return
+        if (!value.trim() && !selectedFile) return
         if (disabled) return
 
-        onSend(input.trim(), selectedFile || undefined)
+        onSend(value.trim(), selectedFile || undefined)
 
-        // Reset
-        setInput('')
+        // Reset file (Input is reset by parent)
         setSelectedFile(null)
         if (fileInputRef.current) {
             fileInputRef.current.value = ''
@@ -33,16 +34,16 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
         }
     }
 
-    const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const handleFileSelect = (e: ChangeEvent<HTMLInputElement>) => {
         const file = e.target.files?.[0]
         if (file) {
             // Basic validation
             if (file.size > 20 * 1024 * 1024) {
-                alert('File quá mạnh! Vui lòng chọn file nhỏ hơn 20MB ⚡')
+                console.warn('File too large! Please select a file smaller than 20MB.')
                 return
             }
             if (!file.type.startsWith('image/')) {
-                alert('Chỉ chấp nhận ảnh chiến đấu! 🔥')
+                console.warn('Only image files are accepted.')
                 return
             }
             setSelectedFile(file)
@@ -51,14 +52,14 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
 
     return (
         <div className="flex flex-col gap-3">
-            {/* File Preview với Dragon Ball style */}
+            {/* File Preview */}
             {selectedFile && (
-                <div className="flex items-center gap-3 bg-gradient-to-r from-ki-900/50 to-fire-900/50 rounded-xl p-4 border-3 border-saiyan-500 energy-glow animate-power-up">
+                <div className="flex items-center gap-3 bg-slate-900/50 rounded-xl p-4 border border-cyber-500/30 animate-fade-in">
                     <div className="flex-1 flex items-center gap-3">
-                        <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-saiyan-500 to-fire-500 flex items-center justify-center animate-ki-charge">
-                            <span className="text-2xl">📸</span>
+                        <div className="w-10 h-10 rounded-lg bg-cyber-500/20 flex items-center justify-center">
+                            <ImageIcon className="w-5 h-5 text-cyber-400" />
                         </div>
-                        <span className="text-sm text-saiyan-100 truncate font-semibold">
+                        <span className="text-sm text-slate-200 truncate font-medium">
                             {selectedFile.name}
                         </span>
                     </div>
@@ -67,62 +68,60 @@ export default function ChatInput({ onSend, disabled }: ChatInputProps) {
                             setSelectedFile(null)
                             if (fileInputRef.current) fileInputRef.current.value = ''
                         }}
-                        className="text-fire-400 hover:text-fire-300 transition-all hover:scale-110 font-bold text-xl"
-                        title="Hủy năng lượng"
+                        className="text-slate-400 hover:text-slate-200 transition-colors"
+                        title="Remove file"
                     >
-                        ❌
+                        <X className="w-5 h-5" />
                     </button>
                 </div>
             )}
 
-            {/* Input Container với Energy Effects */}
-            <div className="flex gap-3 items-end">
-                {/* File Upload Button - Dragon Ball style */}
-                <button
-                    onClick={() => fileInputRef.current?.click()}
-                    disabled={disabled}
-                    className="flex-shrink-0 w-14 h-14 rounded-xl bg-gradient-to-br from-namek-600 to-namek-500 hover:from-namek-500 hover:to-namek-400 border-3 border-namek-400 flex items-center justify-center transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed shadow-lg animate-float"
-                    title="Power Up với ảnh! 📸"
-                >
-                    <span className="text-3xl filter drop-shadow-lg">📎</span>
-                </button>
-                <input
-                    ref={fileInputRef}
-                    type="file"
-                    accept="image/*"
-                    onChange={handleFileSelect}
-                    className="hidden"
-                />
-
-                {/* Text Input với Ki Energy border */}
-                <div className="flex-1 relative">
-                    <textarea
-                        value={input}
-                        onChange={(e) => setInput(e.target.value)}
-                        onKeyDown={handleKeyDown}
+            {/* Input Container */}
+            <div className="glass-panel rounded-2xl p-4 glow-cyber relative overflow-hidden">
+                 <div className="scan-line" />
+                 <div className="flex gap-3 items-end">
+                    {/* File Upload Button */}
+                    <button
+                        onClick={() => fileInputRef.current?.click()}
                         disabled={disabled}
-                        placeholder="Nhập lệnh chiến đấu... (Enter để tung chiêu, Shift+Enter để xuống dòng) ⚡"
-                        rows={1}
-                        className="w-full resize-none bg-gradient-to-br from-slate-900/95 to-blue-950/95 text-white rounded-xl px-5 py-4 border-4 border-ki-500 focus:outline-none focus:border-saiyan-500 focus:ring-4 focus:ring-saiyan-500/50 disabled:opacity-50 disabled:cursor-not-allowed placeholder:text-ki-300/70 max-h-32 font-semibold shadow-xl ki-glow"
+                        className="flex-shrink-0 w-10 h-10 rounded-xl bg-slate-800/50 hover:bg-slate-700/50 border border-slate-700 hover:border-cyber-500/50 flex items-center justify-center transition-all disabled:opacity-50 disabled:cursor-not-allowed group"
+                        title="Upload image"
+                    >
+                        <Paperclip className="w-5 h-5 text-slate-400 group-hover:text-cyber-400 transition-colors" />
+                    </button>
+                    <input
+                        ref={fileInputRef}
+                        type="file"
+                        accept="image/*"
+                        onChange={handleFileSelect}
+                        className="hidden"
                     />
-                    {/* Energy indicator */}
-                    <div className="absolute bottom-0 left-0 right-0 h-1 bg-gradient-to-r from-transparent via-ki-500 to-transparent animate-aura-pulse pointer-events-none"></div>
+
+                    {/* Text Input */}
+                    <div className="flex-1 relative">
+                        <textarea
+                            value={value}
+                            onChange={(e) => onChange(e.target.value)}
+                            onKeyDown={handleKeyDown}
+                            disabled={disabled}
+                            placeholder="Type your message... (Enter to send, Shift+Enter for new line)"
+                            rows={1}
+                            className="w-full bg-transparent text-slate-100 placeholder:text-slate-500 resize-none focus:outline-none text-sm max-h-32 min-h-[1.5rem]"
+                        />
+                    </div>
+
+                    {/* Send Button */}
+                    <button
+                        onClick={handleSubmit}
+                        disabled={disabled || (!value.trim() && !selectedFile)}
+                        className="glass-panel px-4 py-2 rounded-xl bg-gradient-to-r from-cyber-600 to-neon-violet hover:from-cyber-500 hover:to-neon-violet/80 disabled:opacity-50 disabled:cursor-not-allowed transition-all glow-violet flex items-center justify-center"
+                        title="Send message"
+                    >
+                        <Send className="w-4 h-4 text-white" />
+                    </button>
                 </div>
-
-                {/* Send Button - Kamehameha style! */}
-                <button
-                    onClick={handleSubmit}
-                    disabled={disabled || (!input.trim() && !selectedFile)}
-                    className="flex-shrink-0 w-14 h-14 rounded-xl bg-gradient-to-br from-fire-600 via-saiyan-500 to-fire-600 hover:from-saiyan-600 hover:via-fire-500 hover:to-saiyan-600 flex items-center justify-center transition-all hover:scale-110 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 border-4 border-saiyan-400 shadow-2xl saiyan-glow relative overflow-hidden group"
-                    title="KAMEHAMEHA! 💥"
-                >
-                    {/* Energy burst animation on hover */}
-                    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-white to-transparent opacity-0 group-hover:opacity-30 group-hover:animate-energy-blast"></div>
-
-                    <span className="text-3xl filter drop-shadow-lg relative z-10">
-                        ⚡
-                    </span>
-                </button>
+                {/* Tech Decoration */}
+                <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyber-500 to-transparent" />
             </div>
         </div>
     )

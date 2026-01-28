@@ -2,9 +2,10 @@
 
 import { useState } from 'react'
 import { motion, AnimatePresence } from 'framer-motion'
-import { Send, Sparkles, Loader2, ChevronRight } from 'lucide-react'
+import { Sparkles, Loader2, ChevronRight } from 'lucide-react'
 import ChatMessage from '@/components/ChatMessage'
 import Sidebar from '@/components/Sidebar'
+import ChatInput from '@/components/ChatInput'
 
 interface Message {
     id: string
@@ -33,13 +34,19 @@ export default function Home() {
     const [isLoading, setIsLoading] = useState(false)
     const [sidebarOpen, setSidebarOpen] = useState(true)
 
-    const handleSend = async () => {
-        if (!input.trim() || isLoading) return
+    const handleSend = async (content: string, file?: File) => {
+        if (!content.trim() && !file) return
+        if (isLoading) return
+
+        let messageContent = content
+        if (file) {
+             messageContent += ` [Image: ${file.name}]`
+        }
 
         const userMessage: Message = {
             id: Date.now().toString(),
             role: 'user',
-            content: input,
+            content: messageContent,
             timestamp: new Date(),
         }
 
@@ -52,7 +59,7 @@ export default function Home() {
             const assistantMessage: Message = {
                 id: (Date.now() + 1).toString(),
                 role: 'assistant',
-                content: `You said: "${input}". API integration will be added in Day 2.`,
+                content: `You said: "${content}". API integration will be added in Day 2.`,
                 timestamp: new Date(),
             }
             setMessages((prev) => [...prev, assistantMessage])
@@ -174,41 +181,13 @@ export default function Home() {
                             ))}
                         </motion.div>
 
-                        {/* Input Container */}
-                        <div className="glass-panel rounded-2xl p-4 glow-cyber relative overflow-hidden">
-                            <div className="scan-line" />
-                            <div className="flex items-end gap-3">
-                                <div className="flex-1">
-                                    <textarea
-                                        value={input}
-                                        onChange={(e) => setInput(e.target.value)}
-                                        onKeyDown={(e) => {
-                                            if (e.key === 'Enter' && !e.shiftKey) {
-                                                e.preventDefault()
-                                                handleSend()
-                                            }
-                                        }}
-                                        placeholder="Enter your command..."
-                                        rows={1}
-                                        className="w-full bg-transparent text-slate-100 placeholder:text-slate-500 resize-none focus:outline-none text-sm"
-                                        disabled={isLoading}
-                                    />
-                                </div>
-
-                                <motion.button
-                                    whileHover={{ scale: 1.05 }}
-                                    whileTap={{ scale: 0.95 }}
-                                    onClick={handleSend}
-                                    disabled={!input.trim() || isLoading}
-                                    className="glass-panel px-4 py-2 rounded-xl bg-gradient-to-r from-cyber-600 to-neon-violet hover:from-cyber-500 hover:to-neon-violet/80 disabled:opacity-50 disabled:cursor-not-allowed transition-all glow-violet"
-                                >
-                                    <Send className="w-4 h-4 text-white" />
-                                </motion.button>
-                            </div>
-
-                            {/* Tech Decoration */}
-                            <div className="absolute bottom-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-cyber-500 to-transparent" />
-                        </div>
+                        {/* Input Component */}
+                        <ChatInput
+                            value={input}
+                            onChange={setInput}
+                            onSend={handleSend}
+                            disabled={isLoading}
+                        />
 
                         {/* Footer Info */}
                         <div className="mt-2 flex items-center justify-center gap-2 text-xs text-slate-500">
