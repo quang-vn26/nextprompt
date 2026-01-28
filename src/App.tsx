@@ -4,7 +4,7 @@ import { ChatService } from "./services/ChatService";
 import { ChatMessage, PromptionsService } from "./services/PromptionsService";
 import { current, produce } from "immer";
 import { depsEqual, useMounted, usePreviousIf } from "./reactUtil";
-import { ChatInput, ChatHistory, ChatOptionsPanel } from "./components";
+import { ChatInput, ChatHistory, ChatOptionsPanel, MemoryPanel, MemoryToggleButton } from "./components";
 import {
     State,
     RefreshParams,
@@ -19,6 +19,9 @@ import {
     compareChatParams,
 } from "./types";
 import { compactOptionSet, basicOptionSet, BasicOptions, VisualOptionSet } from "./lib/promptions-ui";
+import { useMemoryInjectedPrompt } from "./hooks/useMemoryInjectedPrompt";
+import { useMemory } from "./contexts/MemoryContext";
+import { MemoryService, ConversationMessage } from "./services/MemoryService";
 
 const useStyles = makeStyles({
     appContainer: {
@@ -225,6 +228,10 @@ const ChatPanel: React.FC<{
 }> = (props) => {
     const { historyState, refreshRequest, pendingScroll, chatContainerRef, styles, currentOptionSet, promptions } =
         props;
+
+    // Get memory-injected system prompt
+    const { systemPrompt: memorySystemPrompt } = useMemoryInjectedPrompt();
+
     const penultMessage = historyState.get.at(-2);
     const lastMessage = historyState.get.at(-1);
     const penultRequest = penultMessage?.role === "user" ? penultMessage : undefined;
@@ -383,8 +390,7 @@ const ChatPanel: React.FC<{
                 const history = [
                     {
                         role: "system",
-                        content:
-                            "You are a helpful AI chat bot. When responding to a user consider whether they have provided any additional settings or selections. If they have, do not ask them extra follow-up questions but continue with their intent based on the context.",
+                        content: memorySystemPrompt,
                     } as const,
                     ...elaborateMessagesWithOptions([
                         ...prevHistory,
@@ -473,12 +479,50 @@ function App() {
     const [refreshRequestId, setRefreshRequestId] = React.useState<string>("");
     const [currentOptionSet, setCurrentOptionSet] = React.useState<VisualOptionSet<BasicOptions>>(defaultOptionSet);
     const [optionsPanelVisible, setOptionsPanelVisible] = React.useState(false);
+    const [memoryPanelVisible, setMemoryPanelVisible] = React.useState(false);
     const styles = useStyles();
 
     // Create promptions service instance with current option set
     const promptions = React.useMemo(() => {
         return new PromptionsService(chat, currentOptionSet);
     }, [currentOptionSet]);
+
+    // Memory auto-save
+    const { anonymousId, preferences, saveConversation } = useMemory();
+    const lastSavedLengthRef = React.useRef(0);
+
+    // Auto-save conversation when it completes
+    React.useEffect(() => {
+        if (!preferences.memoryEnabled || !anonymousId) return;
+        if (history.length < 2) return;
+
+        const lastMessage = history[history.length - 1];
+        // Only save when assistant message is complete
+        if (lastMessage.role !== 'assistant' || !('contentDone' in lastMessage) || !(lastMessage as any).contentDone) {
+            return;
+        }
+
+        // Skip if already saved for this length
+        if (lastSavedLengthRef.current === history.length) return;
+
+        // Save conversation
+        const messages = history.filter(h => h.role === 'user' || h.role === 'assistant');
+        if (messages.length >= 2) {
+            const convMessages: ConversationMessage[] = messages.map(m => ({
+                role: m.role as 'user' | 'assistant',
+                content: m.content,
+                timestamp: new Date(),
+            }));
+
+            const title = MemoryService.generateTitle(convMessages);
+            saveConversation(title, convMessages).then(id => {
+                if (id) {
+                    lastSavedLengthRef.current = history.length;
+                    console.log('💾 Conversation saved:', id);
+                }
+            }).catch(console.error);
+        }
+    }, [history, anonymousId, preferences.memoryEnabled, saveConversation]);
 
     const historyState: State<HistoryMessage[]> = {
         get: history,
@@ -555,6 +599,15 @@ function App() {
                         />
                     </div>
                 </div>
+
+                {/* Memory Panel */}
+                <MemoryPanel
+                    isOpen={memoryPanelVisible}
+                    onClose={() => setMemoryPanelVisible(false)}
+                />
+
+                {/* Memory Toggle Button */}
+                <MemoryToggleButton onClick={() => setMemoryPanelVisible(!memoryPanelVisible)} />
             </div>
         </FluentProvider>
     );

@@ -55,13 +55,22 @@ Example output format:
             messages,
             (content, done) => {
                 if (done) {
+                    // Try to extract JSON from response
                     const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
                     const jsonText = jsonMatch ? jsonMatch[1] : content.trim();
-                    const parsedOptions = this.optionSet.validateJSON(jsonText);
-                    if (!parsedOptions) {
-                        throw new Error(`Invalid options JSON: ${jsonText}`);
+
+                    // Try to parse JSON, but don't throw if it fails
+                    try {
+                        const parsedOptions = this.optionSet.validateJSON(jsonText);
+                        if (parsedOptions) {
+                            return onOptions(parsedOptions, true);
+                        }
+                    } catch (parseError) {
+                        console.warn("Failed to parse options JSON, using empty options:", parseError);
                     }
-                    return onOptions(parsedOptions, true);
+
+                    // Return empty options if parsing fails
+                    return onOptions(this.optionSet.emptyOptions(), true);
                 }
                 const partialOptions = this.tryParsePartialOptions(content);
                 if (partialOptions) {
@@ -119,13 +128,22 @@ Example output format:
             messages,
             (content, done) => {
                 if (done) {
+                    // Try to extract JSON from response
                     const jsonMatch = content.match(/```json\s*([\s\S]*?)\s*```/);
                     const jsonText = jsonMatch ? jsonMatch[1] : content.trim();
-                    const parsedOptions = this.optionSet.validateJSON(jsonText);
-                    if (!parsedOptions) {
-                        throw new Error(`Invalid options JSON: ${jsonText}`);
+
+                    // Try to parse JSON, but don't throw if it fails
+                    try {
+                        const parsedOptions = this.optionSet.validateJSON(jsonText);
+                        if (parsedOptions) {
+                            return onOptions(parsedOptions, true);
+                        }
+                    } catch (parseError) {
+                        console.warn("Failed to parse refreshed options JSON, using empty options:", parseError);
                     }
-                    return onOptions(parsedOptions, true);
+
+                    // Return empty options if parsing fails
+                    return onOptions(this.optionSet.emptyOptions(), true);
                 }
                 const partialOptions = this.tryParsePartialOptions(content);
                 if (partialOptions) {

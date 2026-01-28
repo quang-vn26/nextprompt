@@ -157,5 +157,18 @@ npm run dev
 
 ## 📄 License
 
+Example 1: Planning a Feature (Essentials)
+"Use @brainstorming to help me design a new login flow."
+
+What happens: The AI loads the brainstorming skill, asks you structured questions, and produces a professional spec.
+
+Example 2: Checking Your Code (Web Wizard)
+"Run @lint-and-validate on this file and fix errors."
+
+What happens: The AI follows strict linting rules defined in the skill to clean your code.
+
+Example 3: Security Audit (Hacker Pack)
+"Use @api-security-best-practices to review my API endpoints."
+
 MIT License
 
