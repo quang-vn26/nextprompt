@@ -49,12 +49,17 @@ export const compareRefreshParams = (prev: RefreshParams | undefined, next: Refr
 };
 
 export const compareOptionsParams = (prev: OptionsParams | undefined, next: OptionsParams | undefined): boolean => {
-    return (
-        prev !== undefined &&
-        next !== undefined &&
-        prev.message === next.message &&
-        prev.prevHistory === next.prevHistory
-    );
+    if (prev === undefined && next === undefined) return true;
+    if (prev === undefined || next === undefined) return false;
+
+    // Compare by message and history length/last message content
+    const sameMessage = prev.message === next.message;
+    const sameHistoryLength = prev.prevHistory.length === next.prevHistory.length;
+    const sameLastMessage = prev.prevHistory.length === 0 && next.prevHistory.length === 0 ||
+        (prev.prevHistory.length > 0 && next.prevHistory.length > 0 &&
+            prev.prevHistory[prev.prevHistory.length - 1]?.content === next.prevHistory[next.prevHistory.length - 1]?.content);
+
+    return sameMessage && sameHistoryLength && sameLastMessage;
 };
 
 export const compareChatParams = (prev: ChatParams | undefined, next: ChatParams | undefined): boolean => {
