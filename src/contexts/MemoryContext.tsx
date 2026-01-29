@@ -108,8 +108,11 @@ export function MemoryProvider({ children }: { children: ReactNode }) {
                 await refreshConversations();
                 return data.id;
             }
-        } catch (error) {
-            console.error('Failed to save conversation:', error);
+            // Silently fail if API not available (local dev)
+            return null;
+        } catch {
+            // Memory API not available (needs Vercel deployment)
+            return null;
         }
         return null;
     }, [anonymousId, preferences.memoryEnabled, refreshConversations]);
