@@ -1,12 +1,6 @@
 import { motion } from 'framer-motion'
 import { User, Bot } from 'lucide-react'
-
-interface Message {
-    id: string
-    role: 'user' | 'assistant'
-    content: string
-    timestamp: Date
-}
+import { Message } from '@/types'
 
 interface ChatMessageProps {
     message: Message
