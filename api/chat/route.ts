@@ -42,7 +42,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Get AI provider
         const sessionId = req.headers['x-session-id'] as string || 'anonymous';
-        const aiProvider = getAIProvider(sessionId);
+        const aiProvider = getAIProvider();
 
         if (!aiProvider.isReady()) {
             return res.status(503).json({ error: 'AI provider not available. Check API keys.' });
@@ -59,7 +59,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 model,
                 temperature,
                 maxTokens,
-            });
+            }, sessionId);
 
             for await (const chunk of streamGenerator) {
                 res.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -80,7 +80,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             model,
             temperature,
             maxTokens,
-        });
+        }, sessionId);
 
         return res.status(200).json(response);
 
