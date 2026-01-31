@@ -1,10 +1,6 @@
 import { ChatService } from "./ChatService";
 import { Options, OptionSet } from "../lib/promptions-llm";
-
-export interface ChatMessage {
-    role: "user" | "assistant" | "system";
-    content: string;
-}
+import { ChatMessage } from "../types";
 
 export class PromptionsService {
     private chatService: ChatService;
