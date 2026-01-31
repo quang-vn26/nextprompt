@@ -6,7 +6,14 @@
 // AI Provider Types
 // ============================================
 
-export type AIModelType = 'o4-mini' | 'phi4-reasoning' | 'gemini-flash';
+export type AIModelType =
+    | 'o4-mini'
+    | 'phi4-reasoning'
+    | 'gemini-flash'
+    | 'deepseek-v3'
+    | 'deepseek-r1'
+    | 'openai-gpt4';
+
 export type ChatMode = 'fast' | 'deep';
 
 export interface AIProviderConfig {
