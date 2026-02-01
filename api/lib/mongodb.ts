@@ -105,11 +105,17 @@ export async function getAIConfig(): Promise<Record<string, unknown> | null> {
  */
 export async function updateAIConfig(config: Partial<Record<string, unknown>>): Promise<void> {
     const settings = await getSettingsCollection();
+
+    // Create dot notation object for partial update
+    const updateQuery = Object.fromEntries(
+        Object.entries(config).map(([k, v]) => [`value.${k}`, v])
+    );
+
     await settings.updateOne(
         { key: 'ai_config' },
         {
             $set: {
-                value: config,
+                ...updateQuery,
                 updatedAt: new Date(),
             },
             $setOnInsert: {

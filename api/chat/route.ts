@@ -4,9 +4,24 @@
  */
 
 import type { VercelRequest, VercelResponse } from '@vercel/node';
+import { z } from 'zod';
 import { getAIProvider } from '../lib/ai-provider';
 import { initializeSettings } from '../lib/mongodb';
 import { ChatRequest, ChatMessage } from '../lib/types';
+
+// Schema Validation
+const ChatMessageSchema = z.object({
+    role: z.enum(['user', 'assistant', 'system']),
+    content: z.string(),
+});
+
+const ChatRequestSchema = z.object({
+    messages: z.array(ChatMessageSchema).min(1),
+    model: z.enum(['fast', 'deep']).optional(),
+    stream: z.boolean().optional(),
+    temperature: z.number().min(0).max(2).optional(),
+    maxTokens: z.number().positive().optional(),
+});
 
 // Initialize settings on cold start
 let initialized = false;
@@ -31,22 +46,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
     try {
         await ensureInitialized();
 
-        // Parse request body
-        const body = req.body as ChatRequest;
-        const { messages, model = 'fast', stream = false, temperature, maxTokens } = body;
-
-        // Validate messages
-        if (!messages || !Array.isArray(messages) || messages.length === 0) {
-            return res.status(400).json({ error: 'Messages array is required' });
+        // Validate request body
+        const parseResult = ChatRequestSchema.safeParse(req.body);
+        if (!parseResult.success) {
+            return res.status(400).json({
+                error: 'Invalid request body',
+                details: parseResult.error.issues
+            });
         }
 
+        const body = parseResult.data as ChatRequest;
+        const { messages, model = 'fast', stream = false, temperature, maxTokens } = body;
+
         // Get AI provider
-        const sessionId = req.headers['x-session-id'] as string || 'anonymous';
-        const aiProvider = getAIProvider(sessionId);
+        const aiProvider = getAIProvider();
 
         if (!aiProvider.isReady()) {
             return res.status(503).json({ error: 'AI provider not available. Check API keys.' });
         }
+
+        const sessionId = (req.headers['x-session-id'] as string) || 'anonymous';
 
         // Handle streaming response
         if (stream) {
@@ -59,7 +78,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
                 model,
                 temperature,
                 maxTokens,
-            });
+            }, sessionId);
 
             for await (const chunk of streamGenerator) {
                 res.write(`data: ${JSON.stringify(chunk)}\n\n`);
@@ -80,7 +99,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             model,
             temperature,
             maxTokens,
-        });
+        }, sessionId);
 
         return res.status(200).json(response);
 
