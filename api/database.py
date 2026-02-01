@@ -1,21 +1,15 @@
+import logging
 from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-import os
+from config import get_settings
 
-# Load environment variables
-load_dotenv()
-
-# Database URL from environment
-DATABASE_URL = os.getenv("DATABASE_URL")
-
-if not DATABASE_URL:
-    raise ValueError("DATABASE_URL environment variable is not set")
+logger = logging.getLogger(__name__)
+settings = get_settings()
 
 # Create SQLAlchemy engine
 engine = create_engine(
-    DATABASE_URL,
+    settings.DATABASE_URL,
     pool_pre_ping=True,  # Verify connections before using
     pool_size=5,
     max_overflow=10
@@ -50,5 +44,5 @@ def test_connection():
             conn.execute(text("SELECT 1"))
         return True
     except Exception as e:
-        print(f"Database connection failed: {e}")
+        logger.error(f"Database connection failed: {e}")
         return False
