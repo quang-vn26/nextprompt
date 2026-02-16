@@ -40,9 +40,20 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             return res.status(400).json({ error: 'Messages array is required' });
         }
 
+        // Security: Limit message history depth
+        if (messages.length > 50) {
+            return res.status(400).json({ error: 'Message history too long (max 50 messages)' });
+        }
+
+        // Security: Limit max output tokens
+        const safeMaxTokens = Math.min(maxTokens || 2048, 4096);
+
         // Get AI provider
-        const sessionId = req.headers['x-session-id'] as string || 'anonymous';
-        const aiProvider = getAIProvider(sessionId);
+        const sessionId = Array.isArray(req.headers['x-session-id'])
+            ? req.headers['x-session-id'][0]
+            : req.headers['x-session-id'] || 'anonymous';
+
+        const aiProvider = getAIProvider();
 
         if (!aiProvider.isReady()) {
             return res.status(503).json({ error: 'AI provider not available. Check API keys.' });
@@ -54,20 +65,26 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             res.setHeader('Cache-Control', 'no-cache');
             res.setHeader('Connection', 'keep-alive');
 
-            const streamGenerator = aiProvider.streamChat({
-                messages: messages as ChatMessage[],
-                model,
-                temperature,
-                maxTokens,
-            });
+            try {
+                const streamGenerator = aiProvider.streamChat({
+                    messages: messages as ChatMessage[],
+                    model,
+                    temperature,
+                    maxTokens: safeMaxTokens,
+                }, sessionId);
 
-            for await (const chunk of streamGenerator) {
-                res.write(`data: ${JSON.stringify(chunk)}\n\n`);
+                for await (const chunk of streamGenerator) {
+                    // SSE format
+                    res.write(`data: ${JSON.stringify(chunk)}\n\n`);
 
-                if (chunk.done) {
-                    res.write('data: [DONE]\n\n');
-                    break;
+                    if (chunk.done) {
+                        res.write('data: [DONE]\n\n');
+                        break;
+                    }
                 }
+            } catch (error: any) {
+                console.error('Streaming error:', error);
+                res.write(`data: {"error": "${error.message}"}\n\n`);
             }
 
             res.end();
@@ -79,8 +96,8 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
             messages: messages as ChatMessage[],
             model,
             temperature,
-            maxTokens,
-        });
+            maxTokens: safeMaxTokens,
+        }, sessionId);
 
         return res.status(200).json(response);
 
