@@ -72,23 +72,24 @@ export async function getUsageLogsCollection(): Promise<Collection<UsageLogDocum
 export async function initializeSettings(): Promise<void> {
     const settings = await getSettingsCollection();
 
-    // Check if ai_config exists
-    const existingConfig = await settings.findOne({ key: 'ai_config' });
-
-    if (!existingConfig) {
-        await settings.insertOne({
-            key: 'ai_config',
-            value: {
-                defaultModel: 'fast',
-                temperature: 0.7,
-                maxTokens: 2048,
-                enableFallback: true,
-            },
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
-        console.log('✅ Initialized default AI config');
-    }
+    // Initialize default settings if not exists (Atomic)
+    await settings.updateOne(
+        { key: 'ai_config' },
+        {
+            $setOnInsert: {
+                key: 'ai_config',
+                value: {
+                    defaultModel: 'fast',
+                    temperature: 0.7,
+                    maxTokens: 2048,
+                    enableFallback: true,
+                },
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            }
+        },
+        { upsert: true }
+    );
 }
 
 /**
@@ -132,7 +133,7 @@ export async function logUsage(
     const usageLogs = await getUsageLogsCollection();
     await usageLogs.insertOne({
         sessionId,
-        model: model as any,
+        model: model, // Updated types allow string
         promptTokens,
         completionTokens,
         totalTokens: promptTokens + completionTokens,

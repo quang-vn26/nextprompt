@@ -225,8 +225,9 @@ const ChatPanel: React.FC<{
     styles: ReturnType<typeof useStyles>;
     currentOptionSet: VisualOptionSet<BasicOptions>;
     promptions: PromptionsService;
+    sessionId?: string;
 }> = (props) => {
-    const { historyState, refreshRequest, pendingScroll, chatContainerRef, styles, currentOptionSet, promptions } =
+    const { historyState, refreshRequest, pendingScroll, chatContainerRef, styles, currentOptionSet, promptions, sessionId } =
         props;
 
     // Get memory-injected system prompt
@@ -294,6 +295,7 @@ const ChatPanel: React.FC<{
                         (options, done) => {
                             updateHistoryOptions(options as BasicOptions, done, historySet, currentOptionSet);
                         },
+                        { signal: abort.signal, sessionId },
                     );
                 } catch (error) {
                     if ((error as Error).name === 'AbortError') {
@@ -349,7 +351,7 @@ const ChatPanel: React.FC<{
                 try {
                     await promptions.getOptions(history, (options, done) => {
                         updateHistoryOptions(options as BasicOptions, done, historySet, currentOptionSet);
-                    });
+                    }, { signal: abort.signal, sessionId });
                 } catch (error) {
                     updateHistoryWithError(
                         { id: crypto.randomUUID(), role: "error", content: (error as Error).message },
@@ -416,7 +418,7 @@ const ChatPanel: React.FC<{
                         (content, done) => {
                             updateHistoryContent(content, done, historySet);
                         },
-                        { signal: abort.signal },
+                        { signal: abort.signal, sessionId },
                     );
                 } catch (error) {
                     if ((error as Error).name === 'AbortError') {
@@ -596,6 +598,7 @@ function App() {
                             styles={styles}
                             currentOptionSet={currentOptionSet}
                             promptions={promptions}
+                            sessionId={anonymousId || undefined}
                         />
                     </div>
                 </div>

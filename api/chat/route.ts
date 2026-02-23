@@ -10,16 +10,26 @@ import { ChatRequest, ChatMessage } from '../lib/types';
 
 // Initialize settings on cold start
 let initialized = false;
+let initializing: Promise<void> | null = null;
 
 async function ensureInitialized() {
-    if (!initialized) {
-        try {
-            await initializeSettings();
-            initialized = true;
-        } catch (error) {
-            console.warn('⚠️ Could not initialize MongoDB settings:', error);
-        }
+    if (initialized) return;
+
+    if (initializing) {
+        return initializing;
     }
+
+    initializing = initializeSettings()
+        .then(() => {
+            initialized = true;
+            initializing = null;
+        })
+        .catch((error) => {
+            console.warn('⚠️ Could not initialize MongoDB settings:', error);
+            initializing = null;
+        });
+
+    return initializing;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
