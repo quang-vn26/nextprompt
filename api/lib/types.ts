@@ -6,8 +6,17 @@
 // AI Provider Types
 // ============================================
 
-export type AIModelType = 'o4-mini' | 'phi4-reasoning' | 'gemini-flash';
-export type ChatMode = 'fast' | 'deep';
+export type AIModelType =
+    | 'o4-mini'
+    | 'phi4-reasoning'
+    | 'gemini-flash'
+    | 'DeepSeek-V3'
+    | 'Phi-4'
+    | 'DeepSeek-R1'
+    | 'OpenAI'
+    | 'Gemini';
+
+export type ChatMode = 'fast' | 'deep' | 'reasoning' | 'general';
 
 export interface AIProviderConfig {
     name: string;
@@ -68,7 +77,7 @@ export interface AIConfigSettings {
 export interface UsageLogDocument {
     _id?: string;
     sessionId: string;
-    model: AIModelType;
+    model: AIModelType | string; // Allow string for flexibility
     promptTokens: number;
     completionTokens: number;
     totalTokens: number;

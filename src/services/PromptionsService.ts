@@ -18,7 +18,7 @@ export class PromptionsService {
     async getOptions(
         chatHistory: ChatMessage[],
         onOptions: (options: Options, done: boolean) => void,
-        options?: { signal?: AbortSignal },
+        options?: { signal?: AbortSignal; sessionId?: string },
     ): Promise<void> {
         const systemPrompt: ChatMessage = {
             role: "system",
@@ -85,7 +85,7 @@ Example output format:
         existingOptions: Options,
         chatHistory: ChatMessage[],
         onOptions: (options: Options, done: boolean) => void,
-        options?: { signal?: AbortSignal },
+        options?: { signal?: AbortSignal; sessionId?: string },
     ): Promise<void> {
         const formattedExistingOptions = existingOptions.prettyPrint();
 
