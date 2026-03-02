@@ -10,16 +10,25 @@ import { ChatRequest, ChatMessage } from '../lib/types';
 
 // Initialize settings on cold start
 let initialized = false;
+let initializing: Promise<void> | null = null;
 
 async function ensureInitialized() {
-    if (!initialized) {
-        try {
-            await initializeSettings();
-            initialized = true;
-        } catch (error) {
-            console.warn('⚠️ Could not initialize MongoDB settings:', error);
-        }
+    if (initialized) return;
+
+    if (!initializing) {
+        initializing = initializeSettings()
+            .then(() => {
+                initialized = true;
+            })
+            .catch((error) => {
+                console.warn('⚠️ Could not initialize MongoDB settings:', error);
+            })
+            .finally(() => {
+                initializing = null;
+            });
     }
+
+    return initializing;
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
@@ -42,7 +51,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
         // Get AI provider
         const sessionId = req.headers['x-session-id'] as string || 'anonymous';
-        const aiProvider = getAIProvider(sessionId);
+        const aiProvider = getAIProvider();
 
         if (!aiProvider.isReady()) {
             return res.status(503).json({ error: 'AI provider not available. Check API keys.' });
@@ -56,6 +65,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
 
             const streamGenerator = aiProvider.streamChat({
                 messages: messages as ChatMessage[],
+                sessionId,
                 model,
                 temperature,
                 maxTokens,
@@ -77,6 +87,7 @@ export default async function handler(req: VercelRequest, res: VercelResponse) {
         // Handle non-streaming response
         const response = await aiProvider.chatCompletion({
             messages: messages as ChatMessage[],
+            sessionId,
             model,
             temperature,
             maxTokens,

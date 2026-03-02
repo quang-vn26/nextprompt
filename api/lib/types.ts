@@ -25,6 +25,7 @@ export interface ChatMessage {
 
 export interface ChatRequest {
     messages: ChatMessage[];
+    sessionId?: string;
     model?: ChatMode;
     stream?: boolean;
     temperature?: number;
