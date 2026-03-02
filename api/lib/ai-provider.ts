@@ -38,10 +38,8 @@ const AZURE_PHI4_CONFIG: ProviderConfig = {
 export class AIProvider {
     private o4MiniClient: OpenAI | null = null;
     private phi4Client: OpenAI | null = null;
-    private sessionId: string;
 
-    constructor(sessionId: string = 'default') {
-        this.sessionId = sessionId;
+    constructor() {
         this.initializeClients();
     }
 
@@ -125,7 +123,7 @@ export class AIProvider {
         // Log usage to MongoDB
         if (usage) {
             await logUsage(
-                this.sessionId,
+                request.sessionId || 'anonymous',
                 modelName,
                 usage.prompt_tokens,
                 usage.completion_tokens
@@ -205,9 +203,9 @@ export class AIProvider {
 
 let providerInstance: AIProvider | null = null;
 
-export function getAIProvider(sessionId?: string): AIProvider {
+export function getAIProvider(): AIProvider {
     if (!providerInstance) {
-        providerInstance = new AIProvider(sessionId);
+        providerInstance = new AIProvider();
     }
     return providerInstance;
 }
