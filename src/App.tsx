@@ -84,7 +84,7 @@ const useStyles = makeStyles({
     },
 });
 
-const chat = new ChatService();
+export const chat = new ChatService();
 
 // Available option sets
 const availableOptionSets = [
@@ -490,6 +490,13 @@ function App() {
     // Memory auto-save
     const { anonymousId, preferences, saveConversation } = useMemory();
     const lastSavedLengthRef = React.useRef(0);
+
+    // Update ChatService session ID when anonymousId changes
+    React.useEffect(() => {
+        if (anonymousId) {
+            chat.setSessionId(anonymousId);
+        }
+    }, [anonymousId]);
 
     // Auto-save conversation when it completes
     React.useEffect(() => {
