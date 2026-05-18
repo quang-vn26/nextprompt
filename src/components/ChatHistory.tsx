@@ -122,63 +122,65 @@ export const ChatHistory: React.FC<ChatHistoryProps> = ({ history, historySet, c
     }
 
     // Find the latest assistant message
-    const latestAssistantMessage = [...history].reverse().find((msg) => msg.role === "assistant");
-    const latestAssistantId = latestAssistantMessage?.id;
-
-    const messageElements: JSX.Element[] = [];
-
-    for (let i = 0; i < history.length; i++) {
-        const message = history[i];
-
-        if (message.role === "user") {
-            messageElements.push(
-                <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
-                    <div className={styles.spacerColumn}></div>
-                    <div className={styles.messagesColumn}>
-                        <UserMessage message={message} />
-                    </div>
-                    <div className={styles.optionsColumn}></div>
-                </div>,
-            );
-        } else if (message.role === "assistant") {
-            messageElements.push(
-                <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
-                    <div className={styles.spacerColumn}></div>
-                    <div className={styles.messagesColumn}>
-                        <AssistantMessage message={message} />
-                    </div>
-                    <div className={styles.optionsColumn}>
-                        {message.options && !message.options.isEmpty() && (
-                            <>
-                                <OptionRenderer
-                                    options={message.options as any}
-                                    set={(updatedOptions: Options) => {
-                                        historySet((draft) => {
-                                            const msg = draft.find((m) => m.id === message.id);
-                                            if (msg && msg.role === "assistant") {
-                                                msg.options = updatedOptions as BasicOptions;
-                                            }
-                                        });
-                                    }}
-                                    disabled={message.id !== latestAssistantId}
-                                />
-                            </>
-                        )}
-                    </div>
-                </div>,
-            );
-        } else if (message.role === "error") {
-            messageElements.push(
-                <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
-                    <div className={styles.spacerColumn}></div>
-                    <div className={styles.messagesColumn}>
-                        <ErrorMessageComponent message={message} />
-                    </div>
-                    <div className={styles.optionsColumn}></div>
-                </div>,
-            );
+    let latestAssistantId: string | undefined;
+    for (let i = history.length - 1; i >= 0; i--) {
+        if (history[i].role === "assistant") {
+            latestAssistantId = history[i].id;
+            break;
         }
     }
 
-    return <>{messageElements}</>;
+    return (
+        <>
+            {history.map((message, i) => {
+                if (message.role === "user") {
+                    return (
+                        <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
+                            <div className={styles.spacerColumn}></div>
+                            <div className={styles.messagesColumn}>
+                                <UserMessage message={message} />
+                            </div>
+                            <div className={styles.optionsColumn}></div>
+                        </div>
+                    );
+                } else if (message.role === "assistant") {
+                    return (
+                        <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
+                            <div className={styles.spacerColumn}></div>
+                            <div className={styles.messagesColumn}>
+                                <AssistantMessage message={message} />
+                            </div>
+                            <div className={styles.optionsColumn}>
+                                {message.options && !message.options.isEmpty() && (
+                                    <OptionRenderer
+                                        options={message.options as any}
+                                        set={(updatedOptions: Options) => {
+                                            historySet((draft) => {
+                                                const msg = draft.find((m) => m.id === message.id);
+                                                if (msg && msg.role === "assistant") {
+                                                    msg.options = updatedOptions as BasicOptions;
+                                                }
+                                            });
+                                        }}
+                                        disabled={message.id !== latestAssistantId}
+                                    />
+                                )}
+                            </div>
+                        </div>
+                    );
+                } else if (message.role === "error") {
+                    return (
+                        <div key={message.id} className={styles.chatRow} style={{ animationDelay: `${i * 0.05}s` }}>
+                            <div className={styles.spacerColumn}></div>
+                            <div className={styles.messagesColumn}>
+                                <ErrorMessageComponent message={message} />
+                            </div>
+                            <div className={styles.optionsColumn}></div>
+                        </div>
+                    );
+                }
+                return null;
+            })}
+        </>
+    );
 };
