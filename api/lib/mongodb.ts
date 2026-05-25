@@ -72,31 +72,51 @@ export async function getUsageLogsCollection(): Promise<Collection<UsageLogDocum
 export async function initializeSettings(): Promise<void> {
     const settings = await getSettingsCollection();
 
-    // Check if ai_config exists
-    const existingConfig = await settings.findOne({ key: 'ai_config' });
+    // Upsert atomic operation
+    const result = await settings.updateOne(
+        { key: 'ai_config' },
+        {
+            $setOnInsert: {
+                value: {
+                    defaultModel: 'fast',
+                    temperature: 0.7,
+                    maxTokens: 2048,
+                    enableFallback: true,
+                },
+                createdAt: new Date(),
+                updatedAt: new Date(),
+            }
+        },
+        { upsert: true }
+    );
 
-    if (!existingConfig) {
-        await settings.insertOne({
-            key: 'ai_config',
-            value: {
-                defaultModel: 'fast',
-                temperature: 0.7,
-                maxTokens: 2048,
-                enableFallback: true,
-            },
-            createdAt: new Date(),
-            updatedAt: new Date(),
-        });
+    if (result.upsertedCount > 0) {
         console.log('✅ Initialized default AI config');
     }
 }
+
+// AI Config Cache
+let cachedAIConfig: Record<string, unknown> | null = null;
+let cacheExpiry: number = 0;
+const CACHE_TTL = 5 * 60 * 1000; // 5 minutes
 
 /**
  * Get AI configuration from database
  */
 export async function getAIConfig(): Promise<Record<string, unknown> | null> {
+    const now = Date.now();
+    if (cachedAIConfig && cacheExpiry > now) {
+        return cachedAIConfig;
+    }
+
     const settings = await getSettingsCollection();
     const config = await settings.findOne({ key: 'ai_config' });
+
+    if (config?.value) {
+        cachedAIConfig = config.value;
+        cacheExpiry = now + CACHE_TTL;
+    }
+
     return config?.value || null;
 }
 
@@ -118,6 +138,10 @@ export async function updateAIConfig(config: Partial<Record<string, unknown>>): 
         },
         { upsert: true }
     );
+
+    // Invalidate cache
+    cachedAIConfig = null;
+    cacheExpiry = 0;
 }
 
 /**
