@@ -38,10 +38,8 @@ const AZURE_PHI4_CONFIG: ProviderConfig = {
 export class AIProvider {
     private o4MiniClient: OpenAI | null = null;
     private phi4Client: OpenAI | null = null;
-    private sessionId: string;
 
-    constructor(sessionId: string = 'default') {
-        this.sessionId = sessionId;
+    constructor() {
         this.initializeClients();
     }
 
@@ -103,7 +101,7 @@ export class AIProvider {
     /**
      * Send chat completion request (non-streaming)
      */
-    async chatCompletion(request: ChatRequest): Promise<ChatResponse> {
+    async chatCompletion(sessionId: string, request: ChatRequest): Promise<ChatResponse> {
         const mode = request.model || 'fast';
         const { client, deployment, modelName } = this.getClient(mode);
 
@@ -125,7 +123,7 @@ export class AIProvider {
         // Log usage to MongoDB
         if (usage) {
             await logUsage(
-                this.sessionId,
+                sessionId,
                 modelName,
                 usage.prompt_tokens,
                 usage.completion_tokens
@@ -146,7 +144,7 @@ export class AIProvider {
     /**
      * Stream chat completion with generator
      */
-    async *streamChat(request: ChatRequest): AsyncGenerator<StreamChunk> {
+    async *streamChat(sessionId: string, request: ChatRequest): AsyncGenerator<StreamChunk> {
         const mode = request.model || 'fast';
         const { client, deployment, modelName } = this.getClient(mode);
 
@@ -205,9 +203,9 @@ export class AIProvider {
 
 let providerInstance: AIProvider | null = null;
 
-export function getAIProvider(sessionId?: string): AIProvider {
+export function getAIProvider(): AIProvider {
     if (!providerInstance) {
-        providerInstance = new AIProvider(sessionId);
+        providerInstance = new AIProvider();
     }
     return providerInstance;
 }

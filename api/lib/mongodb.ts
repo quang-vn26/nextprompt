@@ -50,6 +50,9 @@ export async function connectToDatabase(): Promise<{ client: MongoClient; db: Db
     return { client, db };
 }
 
+let cachedAIConfig: Record<string, unknown> | null = null;
+let aiConfigCacheTime = 0;
+
 /**
  * Get Settings collection
  */
@@ -95,15 +98,32 @@ export async function initializeSettings(): Promise<void> {
  * Get AI configuration from database
  */
 export async function getAIConfig(): Promise<Record<string, unknown> | null> {
+    const now = Date.now();
+    // 5 minutes TTL
+    if (cachedAIConfig && (now - aiConfigCacheTime < 5 * 60 * 1000)) {
+        return cachedAIConfig;
+    }
+
     const settings = await getSettingsCollection();
     const config = await settings.findOne({ key: 'ai_config' });
-    return config?.value || null;
+
+    if (config?.value) {
+        cachedAIConfig = config.value;
+        aiConfigCacheTime = now;
+        return config.value;
+    }
+
+    return null;
 }
 
 /**
  * Update AI configuration
  */
 export async function updateAIConfig(config: Partial<Record<string, unknown>>): Promise<void> {
+    // Invalidate cache
+    cachedAIConfig = null;
+    aiConfigCacheTime = 0;
+
     const settings = await getSettingsCollection();
     await settings.updateOne(
         { key: 'ai_config' },
